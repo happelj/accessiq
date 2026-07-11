@@ -13,6 +13,8 @@ from .database import Base, SessionLocal, engine, get_db
 from .models import AccessAssignment, Application, AuditEvent, Entitlement, User
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .rbac import require_roles
+from .scim.errors import register_scim_exception_handlers
+from .scim.routes import router as scim_router
 from .schemas import (
     AccessActionRequest,
     AccessResponse,
@@ -277,8 +279,18 @@ app = FastAPI(
         {"name": "Access", "description": "Access assignment operations."},
         {"name": "Audit", "description": "Audit event inspection."},
         {"name": "Health", "description": "Service health and metadata."},
+        {
+            "name": "SCIM",
+            "description": (
+                "SCIM 2.0 protocol metadata endpoints for enterprise identity "
+                "provider integration."
+            ),
+        },
     ],
 )
+
+register_scim_exception_handlers(app)
+app.include_router(scim_router)
 
 
 @app.get(

@@ -122,6 +122,36 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access/revoke` | `security_admin`, `iam_admin` |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 
+## SCIM 2.0 Foundation
+
+SCIM, the System for Cross-domain Identity Management, is the protocol enterprise identity providers use to automate identity lifecycle operations. Products such as Microsoft Entra ID, Okta, Ping Identity, Google Workspace, SailPoint, and OneLogin use SCIM to exchange user and group data with downstream applications.
+
+AccessIQ currently implements the SCIM 2.0 protocol foundation only. It exposes metadata endpoints that enterprise IdPs expect during setup, but it does not provision users or groups yet.
+
+```text
+AccessIQ REST API
+  -> SCIM API
+  -> Future connector framework
+```
+
+The REST API remains the native AccessIQ API. The SCIM API is isolated under `app/scim` so future provisioning and connector work can build on protocol-specific models without coupling to the existing REST route handlers.
+
+SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shaped error payloads, and are protected with the existing JWT authentication and API RBAC layers. Dedicated SCIM bearer tokens can be added later without changing the SCIM metadata model.
+
+| Endpoint | Status | Required Role(s) |
+| --- | --- | --- |
+| `GET /scim/v2/ServiceProviderConfig` | Implemented metadata | `security_admin`, `iam_admin` |
+| `GET /scim/v2/ResourceTypes` | Implemented metadata | `security_admin`, `iam_admin` |
+| `GET /scim/v2/Schemas` | Implemented metadata | `security_admin`, `iam_admin` |
+| `GET /scim/v2/Users` | Future Milestone 6B | Not implemented |
+| `GET /scim/v2/Groups` | Future Milestone 6C | Not implemented |
+
+Future SCIM milestones:
+
+- `6B User Provisioning`: create, read, update, deactivate, and list SCIM users.
+- `6C Groups`: group metadata, group membership, and group provisioning.
+- `6D Enterprise Extensions`: enterprise user extension mapping and lifecycle fields.
+
 ## Policy Enforcement And Audit Logging
 
 AccessIQ uses deterministic Python policy checks for access grants and revokes. It does not call AI, LLMs, or external policy services.
