@@ -230,13 +230,12 @@ def test_unknown_jwt_subject_returns_401() -> None:
 
 
 def test_policy_denial_still_returns_expected_response() -> None:
-    requester = find_user_by_email("sarah@example.com")
     target_user = find_user_by_email("bob@example.com")
-    entitlement = find_entitlement_by_slug("salesforce", "administrator")
+    entitlement = find_entitlement_by_slug("finance-portal", "read-only")
 
     response = client.post(
         "/access/grant",
-        headers=auth_headers(requester["email"]),
+        headers=auth_headers("alice@example.com"),
         json={
             "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
@@ -245,7 +244,7 @@ def test_policy_denial_still_returns_expected_response() -> None:
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Requester lacks permission to grant administrator access"
+        "detail": "Finance Portal access is restricted to Finance employees"
     }
 
 

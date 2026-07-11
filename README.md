@@ -34,9 +34,19 @@ Start the API and PostgreSQL:
 docker compose up --build
 ```
 
-## Authentication
+## Authentication And API Authorization
 
-AccessIQ uses JWT bearer authentication for protected write and audit endpoints. Authentication answers who the caller is; authorization decisions remain in the deterministic policy engine.
+AccessIQ separates authentication, API authorization, business policy evaluation, and audit logging:
+
+```text
+JWT Authentication
+  -> API RBAC
+  -> Business Policy Engine
+  -> Audit Logging
+  -> Database
+```
+
+Authentication answers who the caller is. API RBAC decides whether that authenticated caller may invoke a REST endpoint. The business policy engine then evaluates the requested access change. These layers are intentionally separate so endpoint security does not leak into entitlement policy logic.
 
 Passwords are hashed with Argon2 through `passlib`. Plaintext passwords are never stored or compared directly. Seed users receive development passwords during startup, and existing databases are upgraded safely by adding a `password_hash` column when it is missing.
 
@@ -77,29 +87,46 @@ curl -X POST http://localhost:8000/access/grant \
   -d '{"target_user_id":2,"entitlement_id":1}'
 ```
 
-Protected endpoints:
+### API RBAC
 
-- `POST /access/grant`
-- `POST /access/revoke`
-- `GET /audit-events`
+API authorization uses the `operator_role` field on the authenticated user. Role checks are implemented as reusable FastAPI dependencies, for example:
 
-Public endpoints:
+```python
+Depends(require_roles("security_admin", "iam_admin"))
+```
 
-- `GET /health`
-- `POST /login`
+RBAC failures return `403 Insufficient privileges`. Missing, malformed, invalid, expired, or unknown bearer tokens return `401 Authentication required`.
 
-Milestone 5C will add API-level RBAC. The current milestone only ensures the acting requester is derived from the validated JWT instead of client-supplied request data.
+Supported API roles:
+
+- `security_admin`
+- `iam_admin`
+- `auditor`
+- `helpdesk`
+- `manager`
+- `employee`
+
+Legacy `administrator` and `help_desk` role values are still accepted as compatibility aliases.
+
+| Endpoint | Required Role(s) |
+| --- | --- |
+| `POST /login` | Public |
+| `GET /health` | Public |
+| `GET /users` | Public |
+| `GET /users/{user_id}` | Public |
+| `POST /users` | Public |
+| `GET /applications` | Public |
+| `GET /applications/{application_id}/entitlements` | Public |
+| `GET /users/{user_id}/access` | Public |
+| `POST /access/grant` | `security_admin`, `iam_admin` |
+| `POST /access/revoke` | `security_admin`, `iam_admin` |
+| `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 
 ## Policy Enforcement And Audit Logging
 
 AccessIQ uses deterministic Python policy checks for access grants and revokes. It does not call AI, LLMs, or external policy services.
 
-Supported operator roles:
-
-- `administrator`
-- `help_desk`
-- `auditor`
-- `employee`
+API RBAC is not the business policy engine. A caller must first be authorized to call an endpoint, and then the policy engine evaluates whether the requested access change is allowed.
 
 Grant policy rules:
 
@@ -107,9 +134,9 @@ Grant policy rules:
 - The requester must be active.
 - Auditors and employees cannot grant access.
 - Finance Portal access is restricted to users in the Finance department.
-- Administrator entitlements can only be granted by administrators.
+- Administrator entitlements can only be granted by admin operators.
 - Help Desk users can grant standard, non-administrator entitlements.
-- Administrators can grant standard and administrator entitlements.
+- Admin operators can grant standard and administrator entitlements.
 
 Grant and revoke request bodies identify only the target and entitlement:
 
@@ -122,7 +149,7 @@ Grant and revoke request bodies identify only the target and entitlement:
 
 The requester is always derived from the bearer token and cannot be supplied by the client.
 
-Successful and denied grant/revoke attempts are written to the audit log. Audit events can be listed newest first by authenticated callers:
+Successful grant/revoke attempts and business-policy denials are written to the audit log. API RBAC denials happen before the business policy engine and are not access-governance audit events. Audit events can be listed newest first by authorized callers:
 
 ```bash
 curl http://localhost:8000/audit-events \

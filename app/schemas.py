@@ -3,21 +3,44 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-OperatorRole = Literal["administrator", "help_desk", "auditor", "employee"]
+OperatorRole = Literal[
+    "security_admin",
+    "iam_admin",
+    "auditor",
+    "helpdesk",
+    "manager",
+    "employee",
+    "administrator",
+    "help_desk",
+]
 AuditAction = Literal["grant", "revoke"]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: str = Field(description="Current service health status.")
 
 
 class UserCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    email: EmailStr
-    department: str = Field(min_length=1, max_length=100)
-    active: bool = True
-    operator_role: OperatorRole = "employee"
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Display name for the user.",
+    )
+    email: EmailStr = Field(description="Unique email address for the user.")
+    department: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Department used by policy evaluation.",
+    )
+    active: bool = Field(
+        default=True,
+        description="Whether the user is eligible for access decisions.",
+    )
+    operator_role: OperatorRole = Field(
+        default="employee",
+        description="API operator role assigned to the user.",
+    )
 
 
 class UserResponse(BaseModel):
@@ -32,14 +55,14 @@ class UserResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: EmailStr = Field(description="User email address.")
+    password: str = Field(min_length=1, description="User password.")
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    expires_in: int
+    access_token: str = Field(description="JWT bearer token.")
+    token_type: str = Field(description="Token type. Always bearer.")
+    expires_in: int = Field(description="Token lifetime in seconds.")
 
 
 class ApplicationResponse(BaseModel):
@@ -62,8 +85,12 @@ class EntitlementResponse(BaseModel):
 class AccessActionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target_user_id: int
-    entitlement_id: int
+    target_user_id: int = Field(
+        description="ID of the user whose access is being changed.",
+    )
+    entitlement_id: int = Field(
+        description="ID of the entitlement to grant or revoke.",
+    )
 
 
 class PolicyDecision(BaseModel):
@@ -80,6 +107,12 @@ class AccessResponse(BaseModel):
     entitlement: str
     status: str
     granted_at: datetime
+
+
+class RevokeAccessResponse(BaseModel):
+    status: str
+    user_id: int
+    entitlement_id: int
 
 
 class AuditEventResponse(BaseModel):

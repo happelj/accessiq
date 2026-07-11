@@ -188,4 +188,4 @@ def test_missing_bearer_token_rejected(client: TestClient) -> None:
     response = client.get("/__tests/current-user")
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Not authenticated"}
+    assert response.json() == {"detail": "Authentication required"}

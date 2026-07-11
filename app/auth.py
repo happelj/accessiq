@@ -58,7 +58,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
     )
 
 
-def unauthorized_exception(detail: str = "Invalid authentication credentials") -> HTTPException:
+def unauthorized_exception(detail: str = "Authentication required") -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=detail,
@@ -71,14 +71,14 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     if token is None:
-        raise unauthorized_exception("Not authenticated")
+        raise unauthorized_exception()
 
     try:
         payload = decode_access_token(token)
     except ExpiredSignatureError as exc:
-        raise unauthorized_exception("Invalid authentication credentials") from exc
+        raise unauthorized_exception() from exc
     except JWTError as exc:
-        raise unauthorized_exception("Invalid authentication credentials") from exc
+        raise unauthorized_exception() from exc
 
     subject = payload.get("sub")
 

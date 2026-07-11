@@ -1,5 +1,9 @@
 from .models import Entitlement, User
+from .roles import normalize_operator_role
 from .schemas import PolicyDecision
+
+ADMIN_POLICY_ROLES = {"security_admin", "iam_admin"}
+HELPDESK_POLICY_ROLES = {"helpdesk"}
 
 
 def is_administrator_entitlement(entitlement: Entitlement) -> bool:
@@ -12,7 +16,7 @@ def evaluate_grant_policy(
     entitlement: Entitlement,
 ) -> PolicyDecision:
     """Evaluate grant rules in deterministic priority order."""
-    requester_role = requester.operator_role.lower()
+    requester_role = normalize_operator_role(requester.operator_role)
     application_slug = entitlement.application.slug.lower()
 
     if not target_user.active:
@@ -36,13 +40,16 @@ def evaluate_grant_policy(
             reason="Finance Portal access is restricted to Finance employees",
         )
 
-    if is_administrator_entitlement(entitlement) and requester_role != "administrator":
+    if (
+        is_administrator_entitlement(entitlement)
+        and requester_role not in ADMIN_POLICY_ROLES
+    ):
         return PolicyDecision(
             allowed=False,
             reason="Requester lacks permission to grant administrator access",
         )
 
-    if requester_role in {"administrator", "help_desk"}:
+    if requester_role in ADMIN_POLICY_ROLES | HELPDESK_POLICY_ROLES:
         return PolicyDecision(allowed=True, reason="Access request approved")
 
     return PolicyDecision(
@@ -59,7 +66,7 @@ def evaluate_revoke_policy(
     """Evaluate revoke rules in deterministic priority order."""
     del target_user
 
-    requester_role = requester.operator_role.lower()
+    requester_role = normalize_operator_role(requester.operator_role)
 
     if not requester.active:
         return PolicyDecision(allowed=False, reason="Requester is inactive")
@@ -70,13 +77,16 @@ def evaluate_revoke_policy(
     if requester_role == "employee":
         return PolicyDecision(allowed=False, reason="Employees cannot revoke access")
 
-    if is_administrator_entitlement(entitlement) and requester_role != "administrator":
+    if (
+        is_administrator_entitlement(entitlement)
+        and requester_role not in ADMIN_POLICY_ROLES
+    ):
         return PolicyDecision(
             allowed=False,
             reason="Requester lacks permission to revoke administrator access",
         )
 
-    if requester_role in {"administrator", "help_desk"}:
+    if requester_role in ADMIN_POLICY_ROLES | HELPDESK_POLICY_ROLES:
         return PolicyDecision(allowed=True, reason="Access request approved")
 
     return PolicyDecision(

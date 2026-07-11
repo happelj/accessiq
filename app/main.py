@@ -7,11 +7,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .audit_service import create_audit_event
-from .auth import create_access_token, get_current_user, hash_password, verify_password
+from .auth import create_access_token, hash_password, verify_password
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
 from .models import AccessAssignment, Application, AuditEvent, Entitlement, User
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
+from .rbac import require_roles
 from .schemas import (
     AccessActionRequest,
     AccessResponse,
@@ -22,6 +23,7 @@ from .schemas import (
     EntitlementResponse,
     HealthResponse,
     LoginRequest,
+    RevokeAccessResponse,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -41,14 +43,21 @@ SEEDED_USERS = [
         "email": "sarah@example.com",
         "department": "Finance",
         "active": True,
-        "operator_role": "help_desk",
+        "operator_role": "helpdesk",
     },
     {
         "name": "Alice Johnson",
         "email": "alice@example.com",
         "department": "Engineering",
         "active": True,
-        "operator_role": "administrator",
+        "operator_role": "security_admin",
+    },
+    {
+        "name": "Ian Wright",
+        "email": "ian@example.com",
+        "department": "Engineering",
+        "active": True,
+        "operator_role": "iam_admin",
     },
     {
         "name": "Audit Reviewer",
@@ -56,6 +65,13 @@ SEEDED_USERS = [
         "department": "Compliance",
         "active": True,
         "operator_role": "auditor",
+    },
+    {
+        "name": "Maya Patel",
+        "email": "manager@example.com",
+        "department": "Operations",
+        "active": True,
+        "operator_role": "manager",
     },
 ]
 
@@ -251,10 +267,26 @@ app = FastAPI(
     title="AccessIQ",
     version="0.1.0",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "Authentication", "description": "Login and token issuance."},
+        {"name": "Users", "description": "User management and lookup."},
+        {
+            "name": "Applications",
+            "description": "Application and entitlement reference data.",
+        },
+        {"name": "Access", "description": "Access assignment operations."},
+        {"name": "Audit", "description": "Audit event inspection."},
+        {"name": "Health", "description": "Service health and metadata."},
+    ],
 )
 
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["Health"],
+    summary="Read service metadata",
+    description="Returns basic service metadata and the documentation path.",
+)
 def read_root() -> dict[str, str]:
     return {
         "service": "AccessIQ",
@@ -266,6 +298,9 @@ def read_root() -> dict[str, str]:
     "/health",
     response_model=HealthResponse,
     status_code=status.HTTP_200_OK,
+    tags=["Health"],
+    summary="Check service health",
+    description="Checks that the API can reach its configured database.",
 )
 def health_check(db: Session = Depends(get_db)) -> HealthResponse:
     try:
@@ -279,7 +314,13 @@ def health_check(db: Session = Depends(get_db)) -> HealthResponse:
     return HealthResponse(status="healthy")
 
 
-@app.post("/login", response_model=TokenResponse)
+@app.post(
+    "/login",
+    response_model=TokenResponse,
+    tags=["Authentication"],
+    summary="Issue an access token",
+    description="Authenticates a user and returns a JWT bearer token.",
+)
 def login(
     credentials: LoginRequest,
     db: Session = Depends(get_db),
@@ -308,13 +349,25 @@ def login(
     )
 
 
-@app.get("/users", response_model=list[UserResponse])
+@app.get(
+    "/users",
+    response_model=list[UserResponse],
+    tags=["Users"],
+    summary="List users",
+    description="Returns all known users ordered by ID.",
+)
 def list_users(db: Session = Depends(get_db)) -> list[User]:
     users = db.scalars(select(User).order_by(User.id)).all()
     return list(users)
 
 
-@app.get("/users/{user_id}", response_model=UserResponse)
+@app.get(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    tags=["Users"],
+    summary="Get a user",
+    description="Returns one user by ID.",
+)
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -334,6 +387,9 @@ def get_user(
     "/users",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
+    tags=["Users"],
+    summary="Create a user",
+    description="Creates a user with an operator role and development password.",
 )
 def create_user(
     user_data: UserCreate,
@@ -367,7 +423,13 @@ def create_user(
     return user
 
 
-@app.get("/applications", response_model=list[ApplicationResponse])
+@app.get(
+    "/applications",
+    response_model=list[ApplicationResponse],
+    tags=["Applications"],
+    summary="List applications",
+    description="Returns seeded applications available for entitlement lookup.",
+)
 def list_applications(db: Session = Depends(get_db)) -> list[Application]:
     applications = db.scalars(select(Application).order_by(Application.id)).all()
     return list(applications)
@@ -376,6 +438,9 @@ def list_applications(db: Session = Depends(get_db)) -> list[Application]:
 @app.get(
     "/applications/{application_id}/entitlements",
     response_model=list[EntitlementResponse],
+    tags=["Applications"],
+    summary="List application entitlements",
+    description="Returns entitlements for one application.",
 )
 def list_application_entitlements(
     application_id: int,
@@ -398,7 +463,13 @@ def list_application_entitlements(
     return list(entitlements)
 
 
-@app.get("/users/{user_id}/access", response_model=list[AccessResponse])
+@app.get(
+    "/users/{user_id}/access",
+    response_model=list[AccessResponse],
+    tags=["Access"],
+    summary="List user access",
+    description="Returns active access assignments for one user.",
+)
 def list_user_access(
     user_id: int,
     db: Session = Depends(get_db),
@@ -429,10 +500,16 @@ def list_user_access(
     "/access/grant",
     response_model=AccessResponse,
     status_code=status.HTTP_201_CREATED,
+    tags=["Access"],
+    summary="Grant access",
+    description=(
+        "Requires a bearer token for a security_admin or iam_admin user. "
+        "API RBAC runs before business policy evaluation and audit logging."
+    ),
 )
 def grant_access(
     access_data: AccessActionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("security_admin", "iam_admin")),
     db: Session = Depends(get_db),
 ) -> AccessResponse:
     user = db.get(User, access_data.target_user_id)
@@ -562,12 +639,21 @@ def grant_access(
     return access_assignment_to_response(assignment)
 
 
-@app.post("/access/revoke")
+@app.post(
+    "/access/revoke",
+    response_model=RevokeAccessResponse,
+    tags=["Access"],
+    summary="Revoke access",
+    description=(
+        "Requires a bearer token for a security_admin or iam_admin user. "
+        "API RBAC runs before business policy evaluation and audit logging."
+    ),
+)
 def revoke_access(
     access_data: AccessActionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("security_admin", "iam_admin")),
     db: Session = Depends(get_db),
-) -> dict[str, int | str]:
+) -> RevokeAccessResponse:
     user = db.get(User, access_data.target_user_id)
 
     if user is None:
@@ -669,20 +755,32 @@ def revoke_access(
             detail="Database operation failed",
         ) from exc
 
-    return {
-        "status": "revoked",
-        "user_id": access_data.target_user_id,
-        "entitlement_id": access_data.entitlement_id,
-    }
+    return RevokeAccessResponse(
+        status="revoked",
+        user_id=access_data.target_user_id,
+        entitlement_id=access_data.entitlement_id,
+    )
 
 
-@app.get("/audit-events", response_model=list[AuditEventResponse])
+@app.get(
+    "/audit-events",
+    response_model=list[AuditEventResponse],
+    tags=["Audit"],
+    summary="List audit events",
+    description=(
+        "Requires a bearer token for a security_admin, iam_admin, or auditor "
+        "user. Returns audit events newest first, optionally filtered by query "
+        "parameters."
+    ),
+)
 def list_audit_events(
     requester_id: int | None = None,
     target_user_id: int | None = None,
     result: AuditResult | None = None,
     action: AuditAction | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("security_admin", "iam_admin", "auditor")
+    ),
     db: Session = Depends(get_db),
 ) -> list[AuditEventResponse]:
     del current_user

@@ -97,7 +97,7 @@ def revoke_test_assignment(
     assert response.status_code in {200, 404}
 
 
-def create_inactive_user() -> dict[str, Any]:
+def create_inactive_user(operator_role: str = "employee") -> dict[str, Any]:
     unique_email = f"inactive-{uuid4()}@example.com"
     response = client.post(
         "/users",
@@ -106,7 +106,7 @@ def create_inactive_user() -> dict[str, Any]:
             "email": unique_email,
             "department": "Engineering",
             "active": False,
-            "operator_role": "employee",
+            "operator_role": operator_role,
         },
     )
 
@@ -235,32 +235,25 @@ def test_help_desk_cannot_grant_administrator_access() -> None:
     )
 
     assert response.status_code == 403
-    assert response.json() == {
-        "detail": "Requester lacks permission to grant administrator access"
-    }
+    assert response.json() == {"detail": "Insufficient privileges"}
 
 
-def test_help_desk_can_grant_standard_access() -> None:
+def test_help_desk_cannot_call_grant_endpoint() -> None:
     requester = get_help_desk_user()
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(target_user["id"], entitlement["id"])
+    response = client.post(
+        "/access/grant",
+        headers=auth_headers(requester["email"]),
+        json={
+            "target_user_id": target_user["id"],
+            "entitlement_id": entitlement["id"],
+        },
+    )
 
-    try:
-        response = client.post(
-            "/access/grant",
-            headers=auth_headers(requester["email"]),
-            json={
-                "target_user_id": target_user["id"],
-                "entitlement_id": entitlement["id"],
-            },
-        )
-
-        assert response.status_code == 201
-        assert response.json()["entitlement"] == "Salesforce User"
-    finally:
-        revoke_test_assignment(target_user["id"], entitlement["id"])
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Insufficient privileges"}
 
 
 def test_auditor_cannot_grant_access() -> None:
@@ -278,7 +271,7 @@ def test_auditor_cannot_grant_access() -> None:
     )
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Auditors cannot grant access"}
+    assert response.json() == {"detail": "Insufficient privileges"}
 
 
 def test_employee_cannot_grant_access() -> None:
@@ -296,13 +289,13 @@ def test_employee_cannot_grant_access() -> None:
     )
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Employees cannot grant access"}
+    assert response.json() == {"detail": "Insufficient privileges"}
 
 
 def test_denied_grant_requests_create_audit_events() -> None:
-    requester = get_auditor()
+    requester = get_administrator()
     target_user = get_employee()
-    entitlement = find_entitlement_by_slug("salesforce", "user")
+    entitlement = find_entitlement_by_slug("finance-portal", "read-only")
 
     response = client.post(
         "/access/grant",
@@ -321,11 +314,11 @@ def test_denied_grant_requests_create_audit_events() -> None:
         entitlement_id=entitlement["id"],
         action="grant",
         result="denied",
-        reason="Auditors cannot grant access",
+        reason="Finance Portal access is restricted to Finance employees",
     )
 
-    assert event["application"] == "Salesforce"
-    assert event["entitlement"] == "Salesforce User"
+    assert event["application"] == "Finance Portal"
+    assert event["entitlement"] == "Finance Read Only"
 
 
 def test_successful_grants_create_audit_events() -> None:
@@ -397,7 +390,7 @@ def test_successful_revokes_create_audit_events() -> None:
 
 def test_denied_revokes_create_audit_events() -> None:
     administrator = get_administrator()
-    requester = get_auditor()
+    requester = create_inactive_user(operator_role="security_admin")
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
@@ -423,7 +416,7 @@ def test_denied_revokes_create_audit_events() -> None:
 
         assert grant_response.status_code == 201
         assert revoke_response.status_code == 403
-        assert revoke_response.json() == {"detail": "Auditors cannot revoke access"}
+        assert revoke_response.json() == {"detail": "Requester is inactive"}
 
         assert_audit_event_exists(
             requester_id=requester["id"],
@@ -431,14 +424,14 @@ def test_denied_revokes_create_audit_events() -> None:
             entitlement_id=entitlement["id"],
             action="revoke",
             result="denied",
-            reason="Auditors cannot revoke access",
+            reason="Requester is inactive",
         )
     finally:
         revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
 def test_audit_filtering_by_requester_works() -> None:
-    requester = get_auditor()
+    requester = get_administrator()
     events = get_audit_events(requester_id=requester["id"])
 
     assert events
