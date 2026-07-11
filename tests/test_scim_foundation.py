@@ -117,9 +117,9 @@ def test_service_provider_config_returns_supported_capabilities() -> None:
         "maxOperations": 0,
         "maxPayloadSize": 0,
     }
-    assert body["filter"] == {"supported": False, "maxResults": 0}
+    assert body["filter"] == {"supported": True, "maxResults": 100}
     assert body["changePassword"] == {"supported": False}
-    assert body["sort"] == {"supported": False}
+    assert body["sort"] == {"supported": True}
     assert body["etag"] == {"supported": False}
     assert body["xmlDataFormat"] == {"supported": False}
     assert body["authenticationSchemes"][0]["type"] == "oauthbearertoken"

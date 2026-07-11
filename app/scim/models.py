@@ -18,12 +18,12 @@ from .schemas import (
 
 def build_service_provider_config() -> ServiceProviderConfig:
     return ServiceProviderConfig(
-        documentationUri="https://github.com/happelj/accessiq#scim-20-foundation",
+        documentationUri="https://github.com/happelj/accessiq#scim-20-user-read-operations",
         patch=Capability(supported=False),
         bulk=BulkCapability(supported=False),
-        filter=FilterCapability(supported=False),
+        filter=FilterCapability(supported=True, maxResults=100),
         changePassword=Capability(supported=False),
-        sort=Capability(supported=False),
+        sort=Capability(supported=True),
         etag=Capability(supported=False),
         xmlDataFormat=Capability(supported=False),
         authenticationSchemes=[
@@ -49,8 +49,8 @@ def build_resource_types() -> list[ResourceType]:
             name="User",
             endpoint="/Users",
             description=(
-                "User resource type metadata. User provisioning is planned for "
-                "Milestone 6B."
+                "User resource type metadata. User read operations are "
+                "implemented; provisioning is planned for Milestone 6C."
             ),
             schema=SCIM_SCHEMA_USER,
             schemaExtensions=[
@@ -66,7 +66,7 @@ def build_resource_types() -> list[ResourceType]:
             endpoint="/Groups",
             description=(
                 "Group resource type metadata. Group provisioning is planned for "
-                "Milestone 6C."
+                "a future milestone."
             ),
             schema=SCIM_SCHEMA_GROUP,
         ),
@@ -78,8 +78,8 @@ def build_user_schema() -> SchemaResource:
         id=SCIM_SCHEMA_USER,
         name="User",
         description=(
-            "Core SCIM User schema metadata. User provisioning arrives in "
-            "Milestone 6B."
+            "Core SCIM User schema metadata. AccessIQ currently supports read "
+            "operations for User resources."
         ),
         attributes=[
             SchemaAttribute(

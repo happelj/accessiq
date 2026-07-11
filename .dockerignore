@@ -1,0 +1,17 @@
+.git
+.agents
+.codex
+.venv
+venv
+env
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.env
+*.db
+*.sqlite
+*.sqlite3

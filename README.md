@@ -122,11 +122,11 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access/revoke` | `security_admin`, `iam_admin` |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 
-## SCIM 2.0 Foundation
+## SCIM 2.0 User Read Operations
 
 SCIM, the System for Cross-domain Identity Management, is the protocol enterprise identity providers use to automate identity lifecycle operations. Products such as Microsoft Entra ID, Okta, Ping Identity, Google Workspace, SailPoint, and OneLogin use SCIM to exchange user and group data with downstream applications.
 
-AccessIQ currently implements the SCIM 2.0 protocol foundation only. It exposes metadata endpoints that enterprise IdPs expect during setup, but it does not provision users or groups yet.
+AccessIQ implements SCIM 2.0 metadata endpoints and read-only User resources. It does not provision users or groups yet: `POST /Users`, `PATCH /Users`, `PUT /Users`, `DELETE /Users`, and `/Groups` are intentionally not implemented until later milestones.
 
 ```text
 AccessIQ REST API
@@ -143,14 +143,68 @@ SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shap
 | `GET /scim/v2/ServiceProviderConfig` | Implemented metadata | `security_admin`, `iam_admin` |
 | `GET /scim/v2/ResourceTypes` | Implemented metadata | `security_admin`, `iam_admin` |
 | `GET /scim/v2/Schemas` | Implemented metadata | `security_admin`, `iam_admin` |
-| `GET /scim/v2/Users` | Future Milestone 6B | Not implemented |
-| `GET /scim/v2/Groups` | Future Milestone 6C | Not implemented |
+| `GET /scim/v2/Users` | Implemented read operation | `security_admin`, `iam_admin` |
+| `GET /scim/v2/Users/{id}` | Implemented read operation | `security_admin`, `iam_admin` |
+| `GET /scim/v2/Groups` | Future milestone | Not implemented |
+
+### SCIM User Resource
+
+AccessIQ maps existing `User` rows into SCIM User resources:
+
+- `id`: AccessIQ user ID serialized as a SCIM string ID.
+- `userName`: user email address.
+- `displayName`: AccessIQ display name.
+- `name.formatted`: AccessIQ display name.
+- `active`: AccessIQ active flag.
+- `emails`: primary work email derived from the user email address.
+- `meta.resourceType`: `User`.
+- `meta.location`: canonical SCIM resource URL.
+
+`meta.lastModified` is omitted because AccessIQ does not yet store a user modification timestamp. Unsupported SCIM attributes are omitted rather than populated with placeholder values.
+
+### SCIM User Query Parameters
+
+`GET /scim/v2/Users` returns a SCIM `ListResponse` with `schemas`, `totalResults`, `startIndex`, `itemsPerPage`, and `Resources`.
+
+Pagination:
+
+- `startIndex`: 1-based index of the first result. Default: `1`.
+- `count`: maximum number of resources to return. Default: `100`.
+- Out-of-range `startIndex` values return an empty `Resources` array with the requested `startIndex`.
+
+Filters:
+
+- `userName eq "alice@example.com"`
+- `id eq "123"`
+- `displayName co "Alice"`
+- `active eq true`
+- `active eq false`
+
+Malformed or unsupported filters return a SCIM error with `scimType: invalidFilter`.
+
+Sorting:
+
+- `sortBy=id`
+- `sortBy=userName`
+- `sortBy=displayName`
+- `sortOrder=ascending`
+- `sortOrder=descending`
+
+Unsupported sort fields return a SCIM error with `scimType: invalidPath`.
+
+Attribute projection:
+
+- `attributes=userName`
+- `attributes=id,userName`
+- `excludedAttributes=meta`
+
+Projection is applied to SCIM resources while preserving the required `schemas` and `id` identity fields.
 
 Future SCIM milestones:
 
-- `6B User Provisioning`: create, read, update, deactivate, and list SCIM users.
-- `6C Groups`: group metadata, group membership, and group provisioning.
-- `6D Enterprise Extensions`: enterprise user extension mapping and lifecycle fields.
+- `6C User Provisioning`: create, update, patch, deactivate, and delete SCIM users.
+- `Future Groups`: group metadata, group membership, and group provisioning.
+- `Future Enterprise Extensions`: enterprise user extension mapping and lifecycle fields.
 
 ## Policy Enforcement And Audit Logging
 

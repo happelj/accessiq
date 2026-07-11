@@ -1,12 +1,42 @@
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .constants import SCIM_BASE_PATH, SCIM_MEDIA_TYPE
 from .schemas import ScimErrorResponse
+
+
+class ScimHTTPException(HTTPException):
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        detail: str,
+        scim_type: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(
+            status_code=status_code,
+            detail=detail,
+            headers=headers,
+        )
+        self.scim_type = scim_type
+
+
+def raise_scim_error(
+    *,
+    status_code: int,
+    detail: str,
+    scim_type: str | None = None,
+) -> None:
+    raise ScimHTTPException(
+        status_code=status_code,
+        detail=detail,
+        scim_type=scim_type,
+    )
 
 
 def scim_error_response(
@@ -65,9 +95,11 @@ async def scim_http_exception_handler(
         return await http_exception_handler(request, exc)
 
     detail = exc.detail if isinstance(exc.detail, str) else "SCIM request failed"
+    scim_type = getattr(exc, "scim_type", None)
     return scim_error_response(
         status_code=exc.status_code,
         detail=detail,
+        scim_type=scim_type,
         headers=exc.headers,
     )
 

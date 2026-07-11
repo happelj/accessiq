@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,6 +8,7 @@ from .constants import (
     SCIM_SCHEMA_RESOURCE_TYPE,
     SCIM_SCHEMA_SCHEMA,
     SCIM_SCHEMA_SERVICE_PROVIDER_CONFIG,
+    SCIM_SCHEMA_USER,
 )
 
 
@@ -105,6 +107,37 @@ class SchemaResource(BaseModel):
     name: str
     description: str
     attributes: list[SchemaAttribute]
+
+
+class ScimName(BaseModel):
+    formatted: str | None = None
+    givenName: str | None = None
+    familyName: str | None = None
+
+
+class ScimEmail(BaseModel):
+    value: str
+    type: str = "work"
+    primary: bool = True
+
+
+class ScimMeta(BaseModel):
+    resourceType: str
+    location: str | None = None
+    lastModified: datetime | None = None
+
+
+class ScimUserResource(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    schemas: list[str] = Field(default_factory=lambda: [SCIM_SCHEMA_USER])
+    id: str
+    userName: str | None = None
+    name: ScimName | None = None
+    displayName: str | None = None
+    active: bool | None = None
+    emails: list[ScimEmail] | None = None
+    meta: ScimMeta | None = None
 
 
 ScimResource = dict[str, Any]

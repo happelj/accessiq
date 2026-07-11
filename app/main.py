@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from threading import Lock
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -126,6 +127,9 @@ SEEDED_ENTITLEMENTS = [
         "slug": "administrator",
     },
 ]
+
+_database_initialization_lock = Lock()
+_database_initialized = False
 
 
 def ensure_schema_compatibility() -> None:
@@ -256,12 +260,26 @@ def audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
     )
 
 
+def initialize_database() -> None:
+    global _database_initialized
+
+    if _database_initialized:
+        return
+
+    with _database_initialization_lock:
+        if _database_initialized:
+            return
+
+        Base.metadata.create_all(bind=engine)
+        ensure_schema_compatibility()
+        seed_users()
+        seed_applications_and_entitlements()
+        _database_initialized = True
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    Base.metadata.create_all(bind=engine)
-    ensure_schema_compatibility()
-    seed_users()
-    seed_applications_and_entitlements()
+    initialize_database()
     yield
 
 
@@ -291,6 +309,12 @@ app = FastAPI(
 
 register_scim_exception_handlers(app)
 app.include_router(scim_router)
+
+
+@app.middleware("http")
+async def ensure_database_initialized(request: Request, call_next):
+    initialize_database()
+    return await call_next(request)
 
 
 @app.get(
