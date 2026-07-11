@@ -17,3 +17,4 @@ class User(Base):
     )
     department: Mapped[str] = mapped_column(String(100), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

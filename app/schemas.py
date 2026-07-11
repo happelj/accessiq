@@ -13,3 +13,14 @@ class UserResponse(BaseModel):
     email: str
     department: str
     active: bool
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
