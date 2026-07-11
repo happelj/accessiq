@@ -87,6 +87,7 @@ def create_scim_user(
             reason="User created",
         )
         db.commit()
+        service.publish_pending_events()
         db.refresh(user)
     except DuplicateUserNameError as exc:
         db.rollback()

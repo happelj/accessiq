@@ -8,9 +8,30 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User
 from ..rbac import require_roles
-from .constants import SCIM_BASE_PATH, SCIM_MEDIA_TYPE, SCIM_SCHEMA_USER
+from ..services.group_service import (
+    GroupService,
+    UnsupportedGroupSortFieldError,
+    UnsupportedGroupSortOrderError,
+)
+from .constants import (
+    SCIM_BASE_PATH,
+    SCIM_MEDIA_TYPE,
+    SCIM_SCHEMA_GROUP,
+    SCIM_SCHEMA_USER,
+)
 from .errors import SCIM_ERROR_RESPONSES, raise_scim_error
-from .filtering import build_user_filter_expression, parse_scim_filter
+from .filtering import (
+    build_group_filter_expression,
+    build_user_filter_expression,
+    parse_group_filter,
+    parse_scim_filter,
+)
+from .group_provisioning import (
+    create_scim_group,
+    patch_scim_group,
+    replace_scim_group,
+)
+from .groups import group_to_scim_resource
 from .models import (
     build_resource_types,
     build_schemas,
@@ -24,7 +45,7 @@ from .provisioning import (
     patch_scim_user,
     replace_scim_user,
 )
-from .schemas import ScimUserResource, ServiceProviderConfig
+from .schemas import ScimGroupResource, ScimUserResource, ServiceProviderConfig
 from .sorting import apply_user_sorting
 from .users import get_user_by_scim_id, user_to_scim_resource
 
@@ -176,6 +197,147 @@ SCIM_PATCH_REQUEST_BODY = {
     },
     "required": True,
 }
+SCIM_GROUP_EXAMPLE = {
+    "schemas": [SCIM_SCHEMA_GROUP],
+    "id": "10",
+    "displayName": "Access Administrators",
+    "members": [
+        {
+            "value": "1",
+            "$ref": "https://accessiq.example.com/scim/v2/Users/1",
+            "display": "Alice Johnson",
+        }
+    ],
+    "meta": {
+        "resourceType": "Group",
+        "location": "https://accessiq.example.com/scim/v2/Groups/10",
+    },
+}
+SCIM_GROUP_LIST_RESPONSES = {
+    **SCIM_ERROR_RESPONSES,
+    200: {
+        "description": "SCIM ListResponse containing Group resources",
+        "content": {
+            SCIM_MEDIA_TYPE: {
+                "example": {
+                    "schemas": [
+                        "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+                    ],
+                    "totalResults": 1,
+                    "startIndex": 1,
+                    "itemsPerPage": 1,
+                    "Resources": [SCIM_GROUP_EXAMPLE],
+                }
+            }
+        },
+    },
+}
+SCIM_GROUP_RESPONSES = {
+    **SCIM_ERROR_RESPONSES,
+    200: {
+        "description": "SCIM Group resource",
+        "content": {
+            SCIM_MEDIA_TYPE: {
+                "example": SCIM_GROUP_EXAMPLE,
+            }
+        },
+    },
+}
+SCIM_GROUP_CREATED_RESPONSES = {
+    **SCIM_ERROR_RESPONSES,
+    201: {
+        "description": "Created SCIM Group resource",
+        "headers": {
+            "Location": {
+                "description": "Canonical SCIM URL for the created Group.",
+                "schema": {"type": "string"},
+            }
+        },
+        "content": {
+            SCIM_MEDIA_TYPE: {
+                "example": SCIM_GROUP_EXAMPLE,
+            }
+        },
+    },
+}
+SCIM_GROUP_REQUEST_EXAMPLE = {
+    "schemas": [SCIM_SCHEMA_GROUP],
+    "displayName": "Access Administrators",
+    "members": [
+        {
+            "value": "1",
+            "display": "Alice Johnson",
+        }
+    ],
+}
+SCIM_GROUP_REQUEST_BODY = {
+    "content": {
+        SCIM_MEDIA_TYPE: {
+            "examples": {
+                "group-with-members": {
+                    "summary": "Group with one member",
+                    "value": SCIM_GROUP_REQUEST_EXAMPLE,
+                },
+                "empty-group": {
+                    "summary": "Group without members",
+                    "value": {
+                        "schemas": [SCIM_SCHEMA_GROUP],
+                        "displayName": "Empty Group",
+                    },
+                },
+            }
+        }
+    },
+    "required": True,
+}
+SCIM_GROUP_PATCH_REQUEST_BODY = {
+    "content": {
+        SCIM_MEDIA_TYPE: {
+            "examples": {
+                "rename-group": {
+                    "summary": "Rename group",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": "displayName",
+                                "value": "Renamed Administrators",
+                            }
+                        ],
+                    },
+                },
+                "add-member": {
+                    "summary": "Add member",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "add",
+                                "path": "members",
+                                "value": {"value": "2"},
+                            }
+                        ],
+                    },
+                },
+                "replace-members": {
+                    "summary": "Replace all members",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": "members",
+                                "value": [{"value": "1"}, {"value": "2"}],
+                            }
+                        ],
+                    },
+                },
+            }
+        }
+    },
+    "required": True,
+}
 
 router = APIRouter(
     prefix=SCIM_BASE_PATH,
@@ -193,8 +355,7 @@ router = APIRouter(
     summary="Get SCIM service provider configuration",
     description=(
         "Returns AccessIQ's SCIM 2.0 ServiceProviderConfig metadata. "
-        "User read operations are implemented; provisioning endpoints are "
-        "planned for Milestone 6C."
+        "User and Group read and provisioning operations are implemented."
     ),
 )
 def get_service_provider_config() -> ServiceProviderConfig:
@@ -210,8 +371,8 @@ def get_service_provider_config() -> ServiceProviderConfig:
     summary="List SCIM resource types",
     description=(
         "Returns SCIM ResourceType metadata for User and Group resources. "
-        "The actual provisioning endpoints are intentionally not implemented "
-        "in this milestone."
+        "AccessIQ implements User and Group resource operations under the "
+        "SCIM 2.0 protocol surface."
     ),
 )
 def list_resource_types() -> ScimListResponse:
@@ -474,6 +635,249 @@ def patch_user(
 
 
 @router.get(
+    "/Groups",
+    response_model=ScimListResponse,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_GROUP_LIST_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="List SCIM groups",
+    description=(
+        "Returns AccessIQ SCIM Groups as a ListResponse. Supports "
+        "pagination (`startIndex`, `count`), filters (`displayName eq`, "
+        "`displayName co`, `id eq`), sorting by `id` or `displayName`, and "
+        "attribute projection."
+    ),
+)
+def list_groups(
+    request: Request,
+    start_index: str | None = Query(
+        default="1",
+        alias="startIndex",
+        description="1-based index of the first Group result to return.",
+    ),
+    count: str | None = Query(
+        default="100",
+        description="Maximum number of Group resources to return.",
+    ),
+    filter_: str | None = Query(
+        default=None,
+        alias="filter",
+        description=(
+            'Supported filters: `displayName eq "Admins"`, '
+            '`displayName co "Admin"`, and `id eq "123"`.'
+        ),
+    ),
+    attributes: str | None = Query(
+        default=None,
+        description="Comma-separated top-level SCIM attributes to include.",
+    ),
+    excluded_attributes: str | None = Query(
+        default=None,
+        alias="excludedAttributes",
+        description="Comma-separated top-level SCIM attributes to omit.",
+    ),
+    sort_by: str | None = Query(
+        default=None,
+        alias="sortBy",
+        description="Optional sort field: `id` or `displayName`.",
+    ),
+    sort_order: str | None = Query(
+        default=None,
+        alias="sortOrder",
+        description="Optional sort order: `ascending` or `descending`.",
+    ),
+    db: Session = Depends(get_db),
+) -> ScimListResponse:
+    pagination = parse_pagination_parameters(
+        start_index=start_index,
+        count=count,
+    )
+    group_filter = parse_group_filter(filter_)
+    projection = parse_attribute_projection(
+        attributes=attributes,
+        excluded_attributes=excluded_attributes,
+    )
+    service = GroupService(db)
+    try:
+        total_results, groups = service.list_groups(
+            filter_expression=build_group_filter_expression(group_filter),
+            sort_by=sort_by,
+            sort_order=sort_order,
+            offset=pagination.offset,
+            limit=pagination.count,
+        )
+    except UnsupportedGroupSortOrderError:
+        raise_scim_error(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sortOrder must be ascending or descending",
+            scim_type="invalidValue",
+        )
+    except UnsupportedGroupSortFieldError as exc:
+        raise_scim_error(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported sortBy field: {exc.sort_by}",
+            scim_type="invalidPath",
+        )
+    resources = [
+        apply_attribute_projection(
+            group_to_scim_resource(group, base_url=str(request.base_url)),
+            projection,
+        )
+        for group in groups
+    ]
+
+    return ScimListResponse(
+        totalResults=total_results,
+        startIndex=pagination.start_index,
+        itemsPerPage=len(resources),
+        Resources=resources,
+    )
+
+
+@router.post(
+    "/Groups",
+    response_model=ScimGroupResource,
+    response_model_exclude_none=True,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_GROUP_CREATED_RESPONSES,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a SCIM group",
+    description=(
+        "Creates a persistent SCIM Group and normalized memberships. Members "
+        "must reference existing AccessIQ users by SCIM User id."
+    ),
+    openapi_extra={"requestBody": SCIM_GROUP_REQUEST_BODY},
+)
+def create_group(
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> SCIMJSONResponse:
+    result = create_scim_group(
+        db=db,
+        actor=current_user,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return SCIMJSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=result.resource,
+        headers={"Location": result.location},
+    )
+
+
+@router.get(
+    "/Groups/{group_id}",
+    response_model=ScimGroupResource,
+    response_model_exclude_none=True,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_GROUP_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="Get a SCIM group",
+    description=(
+        "Returns one SCIM Group by id, including normalized User members. "
+        "Supports `attributes` and `excludedAttributes` projection."
+    ),
+)
+def get_group(
+    group_id: str,
+    request: Request,
+    attributes: str | None = Query(
+        default=None,
+        description="Comma-separated top-level SCIM attributes to include.",
+    ),
+    excluded_attributes: str | None = Query(
+        default=None,
+        alias="excludedAttributes",
+        description="Comma-separated top-level SCIM attributes to omit.",
+    ),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    group = GroupService(db).find_group(group_id)
+    if group is None:
+        raise_scim_error(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Group {group_id} not found",
+        )
+
+    projection = parse_attribute_projection(
+        attributes=attributes,
+        excluded_attributes=excluded_attributes,
+    )
+    return apply_attribute_projection(
+        group_to_scim_resource(group, base_url=str(request.base_url)),
+        projection,
+    )
+
+
+@router.put(
+    "/Groups/{group_id}",
+    response_model=ScimGroupResource,
+    response_model_exclude_none=True,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_GROUP_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="Replace a SCIM group",
+    description=(
+        "Performs SCIM full-replacement semantics for Group displayName and "
+        "members while preserving the immutable Group id."
+    ),
+    openapi_extra={"requestBody": SCIM_GROUP_REQUEST_BODY},
+)
+def replace_group(
+    group_id: str,
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    result = replace_scim_group(
+        db=db,
+        actor=current_user,
+        group_id=group_id,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return result.resource
+
+
+@router.patch(
+    "/Groups/{group_id}",
+    response_model=ScimGroupResource,
+    response_model_exclude_none=True,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_GROUP_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="Patch a SCIM group",
+    description=(
+        "Applies SCIM PATCH operations to Group attributes. Supports `add`, "
+        "`replace`, and `remove` for `displayName` and `members`. Members "
+        "must reference existing AccessIQ Users."
+    ),
+    openapi_extra={"requestBody": SCIM_GROUP_PATCH_REQUEST_BODY},
+)
+def patch_group(
+    group_id: str,
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    result = patch_scim_group(
+        db=db,
+        actor=current_user,
+        group_id=group_id,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return result.resource
+
+
+@router.get(
     "/Schemas",
     response_model=ScimListResponse,
     response_class=SCIMJSONResponse,
@@ -482,8 +886,8 @@ def patch_user(
     summary="List SCIM schemas",
     description=(
         "Returns metadata for the core User schema, core Group schema, and "
-        "Enterprise User extension. User and group provisioning arrive in "
-        "future milestones."
+        "Enterprise User extension. Enterprise extensions arrive in a future "
+        "milestone."
     ),
 )
 def list_schemas() -> ScimListResponse:

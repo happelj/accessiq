@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import hash_password
+from ..domain.events import DomainEvent, UserProvisioned, event_time
+from ..domain.publisher import publish_domain_events
 from ..models import User
 
 DEFAULT_PROVISIONED_DEPARTMENT = "SCIM Provisioned"
@@ -40,6 +42,7 @@ class UserNotFoundError(UserServiceError):
 class UserService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.pending_events: list[DomainEvent] = []
 
     def find_user(self, user_id: str) -> User | None:
         try:
@@ -79,6 +82,13 @@ class UserService:
 
         self.db.add(user)
         self.db.flush()
+        self.pending_events.append(
+            UserProvisioned(
+                occurred_at=event_time(),
+                user_id=user.id,
+                user_name=user.email,
+            )
+        )
 
         return user
 
@@ -152,3 +162,7 @@ class UserService:
             return
 
         raise DuplicateUserNameError(user_name, existing_user)
+
+    def publish_pending_events(self) -> None:
+        publish_domain_events(self.pending_events)
+        self.pending_events.clear()

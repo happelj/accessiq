@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import (
     SCIM_SCHEMA_ERROR,
+    SCIM_SCHEMA_GROUP,
     SCIM_SCHEMA_RESOURCE_TYPE,
     SCIM_SCHEMA_SCHEMA,
     SCIM_SCHEMA_SERVICE_PROVIDER_CONFIG,
@@ -137,6 +138,24 @@ class ScimUserResource(BaseModel):
     displayName: str | None = None
     active: bool | None = None
     emails: list[ScimEmail] | None = None
+    meta: ScimMeta | None = None
+
+
+class ScimGroupMember(BaseModel):
+    value: str
+    ref: str | None = Field(default=None, alias="$ref")
+    display: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ScimGroupResource(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    schemas: list[str] = Field(default_factory=lambda: [SCIM_SCHEMA_GROUP])
+    id: str
+    displayName: str | None = None
+    members: list[ScimGroupMember] | None = None
     meta: ScimMeta | None = None
 
 

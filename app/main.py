@@ -11,7 +11,15 @@ from .audit_service import create_audit_event
 from .auth import create_access_token, hash_password, verify_password
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AccessAssignment, Application, AuditEvent, Entitlement, User
+from .models import (
+    AccessAssignment,
+    Application,
+    AuditEvent,
+    Entitlement,
+    Group,
+    GroupMember,
+    User,
+)
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .rbac import require_roles
 from .scim.errors import register_scim_exception_handlers
@@ -132,6 +140,11 @@ SEEDED_ENTITLEMENTS = [
         "name": "SCIM User Lifecycle",
         "slug": "user-lifecycle",
     },
+    {
+        "application_slug": "scim-provisioning",
+        "name": "SCIM Group Lifecycle",
+        "slug": "group-lifecycle",
+    },
 ]
 
 _database_initialization_lock = Lock()
@@ -142,6 +155,7 @@ def ensure_schema_compatibility() -> None:
     """Apply idempotent compatibility updates for pre-migration schemas."""
     inspector = inspect(engine)
     user_columns = {column["name"] for column in inspector.get_columns("users")}
+    table_names = set(inspector.get_table_names())
 
     with engine.begin() as connection:
         if "operator_role" not in user_columns:
@@ -151,6 +165,10 @@ def ensure_schema_compatibility() -> None:
                     "ADD COLUMN operator_role VARCHAR(50) NOT NULL DEFAULT 'employee'"
                 )
             )
+
+        for table in (Group.__table__, GroupMember.__table__):
+            if table.name not in table_names:
+                table.create(connection, checkfirst=True)
 
         if "password_hash" not in user_columns:
             connection.execute(

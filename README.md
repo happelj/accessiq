@@ -122,22 +122,22 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access/revoke` | `security_admin`, `iam_admin` |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 
-## SCIM 2.0 User Provisioning
+## SCIM 2.0 User And Group Provisioning
 
 SCIM, the System for Cross-domain Identity Management, is the protocol enterprise identity providers use to automate identity lifecycle operations. Products such as Microsoft Entra ID, Okta, Ping Identity, Google Workspace, SailPoint, and OneLogin use SCIM to exchange user and group data with downstream applications.
 
-AccessIQ implements SCIM 2.0 metadata endpoints, User read operations, and User provisioning. It does not implement `DELETE /Users`, `/Groups`, Enterprise User extensions, or connector delivery yet. User deactivation is handled through `active=false` soft deactivation so inactive records remain visible to future provisioning calls.
+AccessIQ implements SCIM 2.0 metadata endpoints, User read/provisioning operations, and Group read/provisioning operations. It does not implement `DELETE /Users`, `DELETE /Groups`, Enterprise User extensions, or connector delivery yet. User deactivation is handled through `active=false` soft deactivation so inactive records remain visible to future provisioning calls.
 
 ```text
 SCIM Route
   -> SCIM Validation
   -> SCIM Provisioning Layer
-  -> User Service
+  -> User/Group Service
   -> Audit Logging
   -> Database
 ```
 
-The REST API remains the native AccessIQ API. The SCIM API is isolated under `app/scim`, and reusable user mutation logic lives under `app/services`. Future SCIM Groups, Enterprise User extensions, and connector work can reuse these service and provisioning patterns without coupling to existing REST route handlers.
+The REST API remains the native AccessIQ API. The SCIM API is isolated under `app/scim`, and reusable user and group mutation logic lives under `app/services`. Future Enterprise User extension and connector work can reuse these service and provisioning patterns without coupling to existing REST route handlers.
 
 SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shaped error payloads, and are protected with the existing JWT authentication and API RBAC layers. Dedicated SCIM bearer tokens can be added later without changing the SCIM metadata model.
 
@@ -151,7 +151,11 @@ SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shap
 | `POST /scim/v2/Users` | Implemented provisioning operation | `security_admin`, `iam_admin` |
 | `PUT /scim/v2/Users/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
 | `PATCH /scim/v2/Users/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
-| `GET /scim/v2/Groups` | Future milestone | Not implemented |
+| `GET /scim/v2/Groups` | Implemented read operation | `security_admin`, `iam_admin` |
+| `GET /scim/v2/Groups/{id}` | Implemented read operation | `security_admin`, `iam_admin` |
+| `POST /scim/v2/Groups` | Implemented provisioning operation | `security_admin`, `iam_admin` |
+| `PUT /scim/v2/Groups/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
+| `PATCH /scim/v2/Groups/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
 
 ### SCIM User Resource
 
@@ -222,9 +226,84 @@ Supported paths:
 
 `active=false` deactivates the user without deleting the row. `remove active` also deactivates the user. `userName` is required and cannot be removed.
 
+### SCIM Group Resource
+
+AccessIQ maps normalized `Group` and `GroupMember` rows into SCIM Group resources:
+
+- `id`: AccessIQ group ID serialized as a SCIM string ID.
+- `displayName`: unique group display name.
+- `members`: existing AccessIQ users referenced by user ID.
+- `members[].value`: AccessIQ user ID serialized as a SCIM string ID.
+- `members[].$ref`: canonical SCIM User resource URL.
+- `members[].display`: user display name.
+- `meta.resourceType`: `Group`.
+- `meta.location`: canonical SCIM Group resource URL.
+- `meta.lastModified`: group update timestamp.
+
+### SCIM Group Provisioning
+
+`POST /scim/v2/Groups` creates a group from a SCIM Group payload:
+
+```json
+{
+  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+  "displayName": "Finance Approvers",
+  "members": [
+    {
+      "value": "1"
+    }
+  ]
+}
+```
+
+`PUT /scim/v2/Groups/{id}` replaces the group `displayName` and membership set while preserving the immutable AccessIQ group ID.
+
+Duplicate `displayName` values return SCIM `409 Conflict` with `scimType: uniqueness`.
+
+Unknown groups return SCIM `404`.
+
+Unknown member users, malformed member references, unsupported paths, malformed PATCH documents, and invalid data types return SCIM `400` errors.
+
+### SCIM Group PATCH
+
+`PATCH /scim/v2/Groups/{id}` supports SCIM PatchOp documents:
+
+```json
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+  "Operations": [
+    {
+      "op": "add",
+      "path": "members",
+      "value": [
+        {
+          "value": "1"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Supported operations:
+
+- `replace`
+- `add`
+- `remove`
+
+Supported paths:
+
+- `displayName`
+- `members`
+- `members[value eq "123"]`
+
+`add members` appends existing users, `remove members` clears all members, `remove members[value eq "123"]` removes one member, and `replace members` atomically replaces the normalized membership set.
+
 ### SCIM Provisioning Audit
 
-Every SCIM provisioning action records an audit event through the existing audit system using the seeded `SCIM Provisioning` application and `SCIM User Lifecycle` entitlement. Successful creates, updates, and deactivations use SCIM-specific audit actions. Duplicate conflicts, unknown users, malformed PATCH requests, invalid payloads, and audit failures are handled with transaction rollback and SCIM-shaped errors.
+Every SCIM provisioning action records an audit event through the existing audit system using the seeded `SCIM Provisioning` application and the `SCIM User Lifecycle` or `SCIM Group Lifecycle` entitlement. Successful creates, updates, deactivations, group renames, and group membership changes use SCIM-specific audit actions. Duplicate conflicts, unknown users or groups, malformed PATCH requests, invalid payloads, and audit failures are handled with transaction rollback and SCIM-shaped errors.
+
+SCIM provisioning also publishes lightweight in-process domain events for user provisioning, group creation, group updates, and group membership add/remove/replace operations. These events are intentionally local-only and do not implement connector delivery.
 
 ### SCIM User Query Parameters
 
@@ -264,9 +343,43 @@ Attribute projection:
 
 Projection is applied to SCIM resources while preserving the required `schemas` and `id` identity fields.
 
+### SCIM Group Query Parameters
+
+`GET /scim/v2/Groups` returns a SCIM `ListResponse` with `schemas`, `totalResults`, `startIndex`, `itemsPerPage`, and `Resources`.
+
+Pagination:
+
+- `startIndex`: 1-based index of the first result. Default: `1`.
+- `count`: maximum number of resources to return. Default: `100`.
+- Out-of-range `startIndex` values return an empty `Resources` array with the requested `startIndex`.
+
+Filters:
+
+- `displayName eq "Admins"`
+- `id eq "123"`
+- `displayName co "Admin"`
+
+Malformed or unsupported filters return a SCIM error with `scimType: invalidFilter`.
+
+Sorting:
+
+- `sortBy=id`
+- `sortBy=displayName`
+- `sortOrder=ascending`
+- `sortOrder=descending`
+
+Unsupported sort fields return a SCIM error with `scimType: invalidPath`.
+
+Attribute projection:
+
+- `attributes=displayName`
+- `attributes=id,displayName`
+- `excludedAttributes=members`
+
+Projection is applied to SCIM Group resources while preserving the required `schemas` and `id` identity fields.
+
 Future SCIM milestones:
 
-- `SCIM Groups`: group metadata, group membership, and group provisioning.
 - `Enterprise User Extension`: enterprise user attribute mapping and lifecycle fields.
 - `Connector Framework`: outbound integration delivery to downstream applications.
 

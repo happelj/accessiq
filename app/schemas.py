@@ -20,6 +20,13 @@ AuditAction = Literal[
     "scim_user_update",
     "scim_user_deactivate",
     "scim_user_provisioning_failure",
+    "scim_group_create",
+    "scim_group_update",
+    "scim_group_rename",
+    "scim_group_member_add",
+    "scim_group_member_remove",
+    "scim_group_members_replace",
+    "scim_group_provisioning_failure",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
