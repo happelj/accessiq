@@ -13,7 +13,14 @@ OperatorRole = Literal[
     "administrator",
     "help_desk",
 ]
-AuditAction = Literal["grant", "revoke"]
+AuditAction = Literal[
+    "grant",
+    "revoke",
+    "scim_user_create",
+    "scim_user_update",
+    "scim_user_deactivate",
+    "scim_user_provisioning_failure",
+]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
 

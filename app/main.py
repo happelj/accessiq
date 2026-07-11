@@ -83,6 +83,7 @@ SEEDED_APPLICATIONS = [
     {"name": "Zendesk", "slug": "zendesk"},
     {"name": "Finance Portal", "slug": "finance-portal"},
     {"name": "GitHub", "slug": "github"},
+    {"name": "SCIM Provisioning", "slug": "scim-provisioning"},
 ]
 
 SEEDED_ENTITLEMENTS = [
@@ -125,6 +126,11 @@ SEEDED_ENTITLEMENTS = [
         "application_slug": "github",
         "name": "GitHub Administrator",
         "slug": "administrator",
+    },
+    {
+        "application_slug": "scim-provisioning",
+        "name": "SCIM User Lifecycle",
+        "slug": "user-lifecycle",
     },
 ]
 

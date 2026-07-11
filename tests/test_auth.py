@@ -174,7 +174,9 @@ def test_expired_token_rejected(client: TestClient) -> None:
 def test_tampered_token_rejected(client: TestClient) -> None:
     body = login(client, "alice@example.com", "Password123!")
     token = body["access_token"]
-    tampered_token = token[:-1] + ("a" if token[-1] != "a" else "b")
+    header, payload, signature = token.split(".")
+    tampered_signature = ("a" if signature[0] != "a" else "b") + signature[1:]
+    tampered_token = ".".join([header, payload, tampered_signature])
 
     response = client.get(
         "/__tests/current-user",

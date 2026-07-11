@@ -1,7 +1,11 @@
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exception_handlers import http_exception_handler
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -104,5 +108,23 @@ async def scim_http_exception_handler(
     )
 
 
+async def scim_request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    if not request.url.path.startswith(SCIM_BASE_PATH):
+        return await request_validation_exception_handler(request, exc)
+
+    return scim_error_response(
+        status_code=400,
+        detail="Invalid SCIM request",
+        scim_type="invalidValue",
+    )
+
+
 def register_scim_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, scim_http_exception_handler)
+    app.add_exception_handler(
+        RequestValidationError,
+        scim_request_validation_exception_handler,
+    )

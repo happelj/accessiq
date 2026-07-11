@@ -111,7 +111,7 @@ def test_service_provider_config_returns_supported_capabilities() -> None:
     body = response.json()
 
     assert body["schemas"] == [SCIM_SCHEMA_SERVICE_PROVIDER_CONFIG]
-    assert body["patch"] == {"supported": False}
+    assert body["patch"] == {"supported": True}
     assert body["bulk"] == {
         "supported": False,
         "maxOperations": 0,

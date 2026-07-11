@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, Request, status
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,6 +18,12 @@ from .models import (
 )
 from .pagination import ScimListResponse, parse_pagination_parameters
 from .projection import apply_attribute_projection, parse_attribute_projection
+from .provisioning import (
+    SCIM_PATCH_SCHEMA,
+    create_scim_user,
+    patch_scim_user,
+    replace_scim_user,
+)
 from .schemas import ScimUserResource, ServiceProviderConfig
 from .sorting import apply_user_sorting
 from .users import get_user_by_scim_id, user_to_scim_resource
@@ -75,6 +83,98 @@ SCIM_USER_RESPONSES = {
             }
         },
     },
+}
+SCIM_USER_CREATED_RESPONSES = {
+    **SCIM_ERROR_RESPONSES,
+    201: {
+        "description": "Created SCIM User resource",
+        "headers": {
+            "Location": {
+                "description": "Canonical SCIM URL for the created User.",
+                "schema": {"type": "string"},
+            }
+        },
+        "content": {
+            SCIM_MEDIA_TYPE: {
+                "example": SCIM_USER_EXAMPLE,
+            }
+        },
+    },
+}
+SCIM_USER_REQUEST_EXAMPLE = {
+    "schemas": [SCIM_SCHEMA_USER],
+    "userName": "new.user@example.com",
+    "displayName": "New User",
+    "active": True,
+}
+SCIM_PATCH_REQUEST_EXAMPLE = {
+    "schemas": [SCIM_PATCH_SCHEMA],
+    "Operations": [
+        {
+            "op": "replace",
+            "path": "active",
+            "value": False,
+        }
+    ],
+}
+SCIM_USER_REQUEST_BODY = {
+    "content": {
+        SCIM_MEDIA_TYPE: {
+            "examples": {
+                "create-active-user": {
+                    "summary": "Create an active user",
+                    "value": SCIM_USER_REQUEST_EXAMPLE,
+                },
+                "deactivate-by-replacement": {
+                    "summary": "Set active false through replacement",
+                    "value": {
+                        **SCIM_USER_REQUEST_EXAMPLE,
+                        "active": False,
+                    },
+                },
+            }
+        }
+    },
+    "required": True,
+}
+SCIM_PATCH_REQUEST_BODY = {
+    "content": {
+        SCIM_MEDIA_TYPE: {
+            "examples": {
+                "replace-active": {
+                    "summary": "Deactivate a user",
+                    "value": SCIM_PATCH_REQUEST_EXAMPLE,
+                },
+                "replace-display-name": {
+                    "summary": "Update displayName",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": "displayName",
+                                "value": "Updated User",
+                            }
+                        ],
+                    },
+                },
+                "add-user-name": {
+                    "summary": "Update userName",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "add",
+                                "path": "userName",
+                                "value": "updated.user@example.com",
+                            }
+                        ],
+                    },
+                },
+            }
+        }
+    },
+    "required": True,
 }
 
 router = APIRouter(
@@ -228,6 +328,41 @@ def list_users(
     )
 
 
+@router.post(
+    "/Users",
+    response_model=ScimUserResource,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_USER_CREATED_RESPONSES,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a SCIM user",
+    description=(
+        "Creates an AccessIQ user from a SCIM 2.0 User payload. "
+        "`userName` maps to the AccessIQ email, `displayName` maps to the "
+        "AccessIQ display name, and `active` controls the active flag. "
+        "Provisioned users are assigned the default employee operator role."
+    ),
+    openapi_extra={"requestBody": SCIM_USER_REQUEST_BODY},
+)
+def create_user(
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> SCIMJSONResponse:
+    result = create_scim_user(
+        db=db,
+        actor=current_user,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return SCIMJSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=result.resource,
+        headers={"Location": result.location},
+    )
+
+
 @router.get(
     "/Users/{user_id}",
     response_model=ScimUserResource,
@@ -273,6 +408,69 @@ def get_user(
         ),
         projection,
     )
+
+
+@router.put(
+    "/Users/{user_id}",
+    response_model=ScimUserResource,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_USER_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="Replace a SCIM user",
+    description=(
+        "Performs SCIM full-replacement semantics for mutable User "
+        "attributes. The SCIM `id` and AccessIQ record identity are preserved."
+    ),
+    openapi_extra={"requestBody": SCIM_USER_REQUEST_BODY},
+)
+def replace_user(
+    user_id: str,
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    result = replace_scim_user(
+        db=db,
+        actor=current_user,
+        user_id=user_id,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return result.resource
+
+
+@router.patch(
+    "/Users/{user_id}",
+    response_model=ScimUserResource,
+    response_class=SCIMJSONResponse,
+    responses=SCIM_USER_RESPONSES,
+    status_code=status.HTTP_200_OK,
+    summary="Patch a SCIM user",
+    description=(
+        "Applies SCIM PATCH operations to User attributes. Supports `add`, "
+        "`replace`, and `remove` for `displayName`, `active`, and `userName` "
+        "where compatible with AccessIQ's required user fields."
+    ),
+    openapi_extra={"requestBody": SCIM_PATCH_REQUEST_BODY},
+)
+def patch_user(
+    user_id: str,
+    request: Request,
+    payload: Any = Body(default=None, media_type=SCIM_MEDIA_TYPE),
+    current_user: User = Depends(require_scim_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    result = patch_scim_user(
+        db=db,
+        actor=current_user,
+        user_id=user_id,
+        payload=payload,
+        base_url=str(request.base_url),
+    )
+
+    return result.resource
 
 
 @router.get(

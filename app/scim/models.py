@@ -18,8 +18,8 @@ from .schemas import (
 
 def build_service_provider_config() -> ServiceProviderConfig:
     return ServiceProviderConfig(
-        documentationUri="https://github.com/happelj/accessiq#scim-20-user-read-operations",
-        patch=Capability(supported=False),
+        documentationUri="https://github.com/happelj/accessiq#scim-20-user-provisioning",
+        patch=Capability(supported=True),
         bulk=BulkCapability(supported=False),
         filter=FilterCapability(supported=True, maxResults=100),
         changePassword=Capability(supported=False),
@@ -30,9 +30,9 @@ def build_service_provider_config() -> ServiceProviderConfig:
             AuthenticationScheme(
                 name="AccessIQ JWT Bearer",
                 description=(
-                    "SCIM foundation endpoints use the existing AccessIQ JWT "
-                    "bearer authentication and API RBAC. Dedicated SCIM bearer "
-                    "tokens are planned for a future milestone."
+                    "SCIM endpoints use the existing AccessIQ JWT bearer "
+                    "authentication and API RBAC. Dedicated SCIM bearer tokens "
+                    "are planned for a future milestone."
                 ),
                 type="oauthbearertoken",
                 specUri="https://www.rfc-editor.org/rfc/rfc6750",
@@ -49,8 +49,8 @@ def build_resource_types() -> list[ResourceType]:
             name="User",
             endpoint="/Users",
             description=(
-                "User resource type metadata. User read operations are "
-                "implemented; provisioning is planned for Milestone 6C."
+                "User resource type metadata. User read and provisioning "
+                "operations are implemented."
             ),
             schema=SCIM_SCHEMA_USER,
             schemaExtensions=[
@@ -79,7 +79,7 @@ def build_user_schema() -> SchemaResource:
         name="User",
         description=(
             "Core SCIM User schema metadata. AccessIQ currently supports read "
-            "operations for User resources."
+            "and provisioning operations for User resources."
         ),
         attributes=[
             SchemaAttribute(

@@ -122,19 +122,22 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access/revoke` | `security_admin`, `iam_admin` |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 
-## SCIM 2.0 User Read Operations
+## SCIM 2.0 User Provisioning
 
 SCIM, the System for Cross-domain Identity Management, is the protocol enterprise identity providers use to automate identity lifecycle operations. Products such as Microsoft Entra ID, Okta, Ping Identity, Google Workspace, SailPoint, and OneLogin use SCIM to exchange user and group data with downstream applications.
 
-AccessIQ implements SCIM 2.0 metadata endpoints and read-only User resources. It does not provision users or groups yet: `POST /Users`, `PATCH /Users`, `PUT /Users`, `DELETE /Users`, and `/Groups` are intentionally not implemented until later milestones.
+AccessIQ implements SCIM 2.0 metadata endpoints, User read operations, and User provisioning. It does not implement `DELETE /Users`, `/Groups`, Enterprise User extensions, or connector delivery yet. User deactivation is handled through `active=false` soft deactivation so inactive records remain visible to future provisioning calls.
 
 ```text
-AccessIQ REST API
-  -> SCIM API
-  -> Future connector framework
+SCIM Route
+  -> SCIM Validation
+  -> SCIM Provisioning Layer
+  -> User Service
+  -> Audit Logging
+  -> Database
 ```
 
-The REST API remains the native AccessIQ API. The SCIM API is isolated under `app/scim` so future provisioning and connector work can build on protocol-specific models without coupling to the existing REST route handlers.
+The REST API remains the native AccessIQ API. The SCIM API is isolated under `app/scim`, and reusable user mutation logic lives under `app/services`. Future SCIM Groups, Enterprise User extensions, and connector work can reuse these service and provisioning patterns without coupling to existing REST route handlers.
 
 SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shaped error payloads, and are protected with the existing JWT authentication and API RBAC layers. Dedicated SCIM bearer tokens can be added later without changing the SCIM metadata model.
 
@@ -145,6 +148,9 @@ SCIM endpoints use the SCIM media type `application/scim+json`, return SCIM-shap
 | `GET /scim/v2/Schemas` | Implemented metadata | `security_admin`, `iam_admin` |
 | `GET /scim/v2/Users` | Implemented read operation | `security_admin`, `iam_admin` |
 | `GET /scim/v2/Users/{id}` | Implemented read operation | `security_admin`, `iam_admin` |
+| `POST /scim/v2/Users` | Implemented provisioning operation | `security_admin`, `iam_admin` |
+| `PUT /scim/v2/Users/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
+| `PATCH /scim/v2/Users/{id}` | Implemented provisioning operation | `security_admin`, `iam_admin` |
 | `GET /scim/v2/Groups` | Future milestone | Not implemented |
 
 ### SCIM User Resource
@@ -161,6 +167,64 @@ AccessIQ maps existing `User` rows into SCIM User resources:
 - `meta.location`: canonical SCIM resource URL.
 
 `meta.lastModified` is omitted because AccessIQ does not yet store a user modification timestamp. Unsupported SCIM attributes are omitted rather than populated with placeholder values.
+
+### SCIM User Provisioning
+
+`POST /scim/v2/Users` creates a user from a SCIM User payload:
+
+```json
+{
+  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+  "userName": "new.user@example.com",
+  "displayName": "New User",
+  "active": true
+}
+```
+
+Provisioning maps `userName` to the AccessIQ email field, `displayName` to the AccessIQ display name, and `active` to the soft-active flag. Provisioned users receive the default `employee` operator role and a generated password hash because SCIM provisioning does not authenticate users directly. Until Enterprise User extensions are implemented, provisioned users receive the internal department value `SCIM Provisioned`.
+
+`PUT /scim/v2/Users/{id}` performs full replacement of mutable SCIM User attributes while preserving the immutable AccessIQ user ID.
+
+Duplicate `userName` values return SCIM `409 Conflict` with `scimType: uniqueness`.
+
+Unknown users return SCIM `404`.
+
+Invalid payloads, unsupported paths, malformed PATCH documents, and invalid data types return SCIM `400` errors.
+
+### SCIM PATCH
+
+`PATCH /scim/v2/Users/{id}` supports SCIM PatchOp documents:
+
+```json
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+  "Operations": [
+    {
+      "op": "replace",
+      "path": "active",
+      "value": false
+    }
+  ]
+}
+```
+
+Supported operations:
+
+- `replace`
+- `add`
+- `remove`
+
+Supported paths:
+
+- `userName`
+- `displayName`
+- `active`
+
+`active=false` deactivates the user without deleting the row. `remove active` also deactivates the user. `userName` is required and cannot be removed.
+
+### SCIM Provisioning Audit
+
+Every SCIM provisioning action records an audit event through the existing audit system using the seeded `SCIM Provisioning` application and `SCIM User Lifecycle` entitlement. Successful creates, updates, and deactivations use SCIM-specific audit actions. Duplicate conflicts, unknown users, malformed PATCH requests, invalid payloads, and audit failures are handled with transaction rollback and SCIM-shaped errors.
 
 ### SCIM User Query Parameters
 
@@ -202,9 +266,9 @@ Projection is applied to SCIM resources while preserving the required `schemas` 
 
 Future SCIM milestones:
 
-- `6C User Provisioning`: create, update, patch, deactivate, and delete SCIM users.
-- `Future Groups`: group metadata, group membership, and group provisioning.
-- `Future Enterprise Extensions`: enterprise user extension mapping and lifecycle fields.
+- `SCIM Groups`: group metadata, group membership, and group provisioning.
+- `Enterprise User Extension`: enterprise user attribute mapping and lifecycle fields.
+- `Connector Framework`: outbound integration delivery to downstream applications.
 
 ## Policy Enforcement And Audit Logging
 
