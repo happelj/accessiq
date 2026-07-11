@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -21,9 +21,22 @@ class User(Base):
     )
     department: Mapped[str] = mapped_column(String(100), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    operator_role: Mapped[str] = mapped_column(
+        String(50),
+        default="employee",
+        nullable=False,
+    )
     access_assignments: Mapped[list[AccessAssignment]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    requested_audit_events: Mapped[list[AuditEvent]] = relationship(
+        back_populates="requester",
+        foreign_keys="AuditEvent.requester_id",
+    )
+    targeted_audit_events: Mapped[list[AuditEvent]] = relationship(
+        back_populates="target_user",
+        foreign_keys="AuditEvent.target_user_id",
     )
 
 
@@ -93,3 +106,47 @@ class AccessAssignment(Base):
     entitlement: Mapped[Entitlement] = relationship(
         back_populates="access_assignments",
     )
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    requester_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    target_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id"),
+        nullable=False,
+    )
+    entitlement_id: Mapped[int] = mapped_column(
+        ForeignKey("entitlements.id"),
+        nullable=False,
+    )
+    result: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        index=True,
+        nullable=False,
+    )
+
+    requester: Mapped[User] = relationship(
+        back_populates="requested_audit_events",
+        foreign_keys=[requester_id],
+    )
+    target_user: Mapped[User] = relationship(
+        back_populates="targeted_audit_events",
+        foreign_keys=[target_user_id],
+    )
+    application: Mapped[Application] = relationship()
+    entitlement: Mapped[Entitlement] = relationship()

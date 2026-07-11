@@ -1,6 +1,11 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+OperatorRole = Literal["administrator", "help_desk", "auditor", "employee"]
+AuditAction = Literal["grant", "revoke"]
+AuditResult = Literal["allowed", "denied", "succeeded"]
 
 
 class HealthResponse(BaseModel):
@@ -12,6 +17,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     department: str = Field(min_length=1, max_length=100)
     active: bool = True
+    operator_role: OperatorRole = "employee"
 
 
 class UserResponse(BaseModel):
@@ -22,6 +28,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     department: str
     active: bool
+    operator_role: OperatorRole
 
 
 class ApplicationResponse(BaseModel):
@@ -41,9 +48,15 @@ class EntitlementResponse(BaseModel):
     application_id: int
 
 
-class AccessGrantRequest(BaseModel):
+class AccessActionRequest(BaseModel):
+    requester_id: int
     user_id: int
     entitlement_id: int
+
+
+class PolicyDecision(BaseModel):
+    allowed: bool
+    reason: str
 
 
 class AccessResponse(BaseModel):
@@ -55,3 +68,17 @@ class AccessResponse(BaseModel):
     entitlement: str
     status: str
     granted_at: datetime
+
+
+class AuditEventResponse(BaseModel):
+    id: int
+    requester_id: int
+    target_user_id: int
+    action: str
+    application_id: int
+    application: str
+    entitlement_id: int
+    entitlement: str
+    result: str
+    reason: str
+    created_at: datetime

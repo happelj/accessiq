@@ -1,22 +1,57 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
-
 from fastapi import Depends, FastAPI, HTTPException, status
-from sqlalchemy import select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
+from .audit_service import create_audit_event
 from .database import Base, SessionLocal, engine, get_db
-from .models import AccessAssignment, Application, Entitlement, User
+from .models import AccessAssignment, Application, AuditEvent, Entitlement, User
+from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .schemas import (
-    AccessGrantRequest,
+    AccessActionRequest,
     AccessResponse,
+    AuditEventResponse,
     ApplicationResponse,
+    AuditAction,
+    AuditResult,
     EntitlementResponse,
     HealthResponse,
     UserCreate,
     UserResponse,
 )
+
+SEEDED_USERS = [
+    {
+        "name": "Bob Smith",
+        "email": "bob@example.com",
+        "department": "Sales",
+        "active": True,
+        "operator_role": "employee",
+    },
+    {
+        "name": "Sarah Chen",
+        "email": "sarah@example.com",
+        "department": "Finance",
+        "active": True,
+        "operator_role": "help_desk",
+    },
+    {
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "department": "Engineering",
+        "active": True,
+        "operator_role": "administrator",
+    },
+    {
+        "name": "Audit Reviewer",
+        "email": "auditor@example.com",
+        "department": "Compliance",
+        "active": True,
+        "operator_role": "auditor",
+    },
+]
 
 SEEDED_APPLICATIONS = [
     {"name": "Salesforce", "slug": "salesforce"},
@@ -69,36 +104,38 @@ SEEDED_ENTITLEMENTS = [
 ]
 
 
-def seed_users() -> None:
-    """Insert initial users only when the users table is empty."""
-    with SessionLocal() as db:
-        existing_user = db.scalar(select(User).limit(1))
+def ensure_schema_compatibility() -> None:
+    """Apply idempotent compatibility updates for pre-migration schemas."""
+    inspector = inspect(engine)
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
 
-        if existing_user is not None:
-            return
+    if "operator_role" in user_columns:
+        return
 
-        db.add_all(
-            [
-                User(
-                    name="Bob Smith",
-                    email="bob@example.com",
-                    department="Sales",
-                    active=True,
-                ),
-                User(
-                    name="Sarah Chen",
-                    email="sarah@example.com",
-                    department="Finance",
-                    active=True,
-                ),
-                User(
-                    name="Alice Johnson",
-                    email="alice@example.com",
-                    department="Engineering",
-                    active=True,
-                ),
-            ]
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN operator_role VARCHAR(50) NOT NULL DEFAULT 'employee'"
+            )
         )
+
+
+def seed_users() -> None:
+    """Insert or update known seed users without duplicating rows."""
+    with SessionLocal() as db:
+        for user_data in SEEDED_USERS:
+            user = db.scalar(select(User).where(User.email == user_data["email"]))
+
+            if user is None:
+                db.add(User(**user_data))
+                continue
+
+            user.name = user_data["name"]
+            user.department = user_data["department"]
+            user.active = user_data["active"]
+            user.operator_role = user_data["operator_role"]
+
         db.commit()
 
 
@@ -165,9 +202,26 @@ def access_assignment_to_response(
     )
 
 
+def audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
+    return AuditEventResponse(
+        id=event.id,
+        requester_id=event.requester_id,
+        target_user_id=event.target_user_id,
+        action=event.action,
+        application_id=event.application_id,
+        application=event.application.name,
+        entitlement_id=event.entitlement_id,
+        entitlement=event.entitlement.name,
+        result=event.result,
+        reason=event.reason,
+        created_at=event.created_at,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility()
     seed_users()
     seed_applications_and_entitlements()
     yield
@@ -253,6 +307,7 @@ def create_user(
         email=normalized_email,
         department=user_data.department,
         active=user_data.active,
+        operator_role=user_data.operator_role,
     )
 
     db.add(user)
@@ -326,9 +381,17 @@ def list_user_access(
     status_code=status.HTTP_201_CREATED,
 )
 def grant_access(
-    access_data: AccessGrantRequest,
+    access_data: AccessActionRequest,
     db: Session = Depends(get_db),
 ) -> AccessResponse:
+    requester = db.get(User, access_data.requester_id)
+
+    if requester is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requester not found",
+        )
+
     user = db.get(User, access_data.user_id)
 
     if user is None:
@@ -349,6 +412,8 @@ def grant_access(
             detail="Entitlement not found",
         )
 
+    application_id = entitlement.application.id
+
     existing_assignment = db.scalar(
         select(AccessAssignment).where(
             AccessAssignment.user_id == access_data.user_id,
@@ -357,9 +422,55 @@ def grant_access(
     )
 
     if existing_assignment is not None:
+        try:
+            create_audit_event(
+                db,
+                requester_id=access_data.requester_id,
+                target_user_id=access_data.user_id,
+                action="grant",
+                application_id=application_id,
+                entitlement_id=access_data.entitlement_id,
+                result="denied",
+                reason="User already has this access",
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already has this access",
+        )
+
+    policy_decision = evaluate_grant_policy(requester, user, entitlement)
+
+    if not policy_decision.allowed:
+        try:
+            create_audit_event(
+                db,
+                requester_id=access_data.requester_id,
+                target_user_id=access_data.user_id,
+                action="grant",
+                application_id=application_id,
+                entitlement_id=access_data.entitlement_id,
+                result="denied",
+                reason=policy_decision.reason,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=policy_decision.reason,
         )
 
     assignment = AccessAssignment(
@@ -367,9 +478,27 @@ def grant_access(
         entitlement_id=access_data.entitlement_id,
     )
 
-    db.add(assignment)
-    db.commit()
-    db.refresh(assignment)
+    try:
+        db.add(assignment)
+        db.flush()
+        assignment_id = assignment.id
+        create_audit_event(
+            db,
+            requester_id=access_data.requester_id,
+            target_user_id=access_data.user_id,
+            action="grant",
+            application_id=application_id,
+            entitlement_id=access_data.entitlement_id,
+            result="succeeded",
+            reason=policy_decision.reason,
+        )
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database operation failed",
+        ) from exc
 
     assignment = db.scalar(
         select(AccessAssignment)
@@ -378,7 +507,7 @@ def grant_access(
                 Entitlement.application
             )
         )
-        .where(AccessAssignment.id == assignment.id)
+        .where(AccessAssignment.id == assignment_id)
     )
 
     if assignment is None:
@@ -392,9 +521,17 @@ def grant_access(
 
 @app.post("/access/revoke")
 def revoke_access(
-    access_data: AccessGrantRequest,
+    access_data: AccessActionRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, int | str]:
+    requester = db.get(User, access_data.requester_id)
+
+    if requester is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requester not found",
+        )
+
     user = db.get(User, access_data.user_id)
 
     if user is None:
@@ -403,13 +540,19 @@ def revoke_access(
             detail="User not found",
         )
 
-    entitlement = db.get(Entitlement, access_data.entitlement_id)
+    entitlement = db.scalar(
+        select(Entitlement)
+        .options(joinedload(Entitlement.application))
+        .where(Entitlement.id == access_data.entitlement_id)
+    )
 
     if entitlement is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Entitlement not found",
         )
+
+    application_id = entitlement.application.id
 
     assignment = db.scalar(
         select(AccessAssignment).where(
@@ -419,16 +562,114 @@ def revoke_access(
     )
 
     if assignment is None:
+        try:
+            create_audit_event(
+                db,
+                requester_id=access_data.requester_id,
+                target_user_id=access_data.user_id,
+                action="revoke",
+                application_id=application_id,
+                entitlement_id=access_data.entitlement_id,
+                result="denied",
+                reason="Access assignment not found",
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Access assignment not found",
         )
 
-    db.delete(assignment)
-    db.commit()
+    policy_decision = evaluate_revoke_policy(requester, user, entitlement)
+
+    if not policy_decision.allowed:
+        try:
+            create_audit_event(
+                db,
+                requester_id=access_data.requester_id,
+                target_user_id=access_data.user_id,
+                action="revoke",
+                application_id=application_id,
+                entitlement_id=access_data.entitlement_id,
+                result="denied",
+                reason=policy_decision.reason,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=policy_decision.reason,
+        )
+
+    try:
+        db.delete(assignment)
+        create_audit_event(
+            db,
+            requester_id=access_data.requester_id,
+            target_user_id=access_data.user_id,
+            action="revoke",
+            application_id=application_id,
+            entitlement_id=access_data.entitlement_id,
+            result="succeeded",
+            reason="Access revoked",
+        )
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database operation failed",
+        ) from exc
 
     return {
         "status": "revoked",
         "user_id": access_data.user_id,
         "entitlement_id": access_data.entitlement_id,
     }
+
+
+@app.get("/audit-events", response_model=list[AuditEventResponse])
+def list_audit_events(
+    requester_id: int | None = None,
+    target_user_id: int | None = None,
+    result: AuditResult | None = None,
+    action: AuditAction | None = None,
+    db: Session = Depends(get_db),
+) -> list[AuditEventResponse]:
+    statement = select(AuditEvent).options(
+        joinedload(AuditEvent.application),
+        joinedload(AuditEvent.entitlement),
+    )
+
+    if requester_id is not None:
+        statement = statement.where(AuditEvent.requester_id == requester_id)
+
+    if target_user_id is not None:
+        statement = statement.where(AuditEvent.target_user_id == target_user_id)
+
+    if result is not None:
+        statement = statement.where(AuditEvent.result == result)
+
+    if action is not None:
+        statement = statement.where(AuditEvent.action == action)
+
+    events = db.scalars(
+        statement.order_by(
+            AuditEvent.created_at.desc(),
+            AuditEvent.id.desc(),
+        )
+    ).all()
+
+    return [audit_event_to_response(event) for event in events]

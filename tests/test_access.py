@@ -35,10 +35,35 @@ def find_entitlement_by_slug(
     raise AssertionError(f"Entitlement with slug {slug!r} was not found")
 
 
-def revoke_test_assignment(user_id: int, entitlement_id: int) -> None:
+def find_user_by_email(email: str) -> dict[str, Any]:
+    response = client.get("/users")
+
+    assert response.status_code == 200
+
+    for user in response.json():
+        if user["email"] == email:
+            return user
+
+    raise AssertionError(f"User with email {email!r} was not found")
+
+
+def get_administrator_requester() -> dict[str, Any]:
+    return find_user_by_email("alice@example.com")
+
+
+def get_employee_target() -> dict[str, Any]:
+    return find_user_by_email("bob@example.com")
+
+
+def revoke_test_assignment(
+    requester_id: int,
+    user_id: int,
+    entitlement_id: int,
+) -> None:
     response = client.post(
         "/access/revoke",
         json={
+            "requester_id": requester_id,
             "user_id": user_id,
             "entitlement_id": entitlement_id,
         },
@@ -89,13 +114,20 @@ def test_missing_application_returns_404() -> None:
 
 
 def test_access_can_be_granted() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
     entitlement = get_salesforce_user_entitlement()
     payload = {
-        "user_id": 1,
+        "requester_id": requester["id"],
+        "user_id": target_user["id"],
         "entitlement_id": entitlement["id"],
     }
 
-    revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+    revoke_test_assignment(
+        payload["requester_id"],
+        payload["user_id"],
+        payload["entitlement_id"],
+    )
 
     try:
         response = client.post("/access/grant", json=payload)
@@ -112,17 +144,28 @@ def test_access_can_be_granted() -> None:
         assert body["status"] == "active"
         assert "granted_at" in body
     finally:
-        revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+        revoke_test_assignment(
+            payload["requester_id"],
+            payload["user_id"],
+            payload["entitlement_id"],
+        )
 
 
 def test_duplicate_access_returns_409() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
     entitlement = get_salesforce_user_entitlement()
     payload = {
-        "user_id": 1,
+        "requester_id": requester["id"],
+        "user_id": target_user["id"],
         "entitlement_id": entitlement["id"],
     }
 
-    revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+    revoke_test_assignment(
+        payload["requester_id"],
+        payload["user_id"],
+        payload["entitlement_id"],
+    )
 
     try:
         first_response = client.post("/access/grant", json=payload)
@@ -134,17 +177,28 @@ def test_duplicate_access_returns_409() -> None:
             "detail": "User already has this access"
         }
     finally:
-        revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+        revoke_test_assignment(
+            payload["requester_id"],
+            payload["user_id"],
+            payload["entitlement_id"],
+        )
 
 
 def test_granted_access_appears_in_user_access() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
     entitlement = get_salesforce_user_entitlement()
     payload = {
-        "user_id": 1,
+        "requester_id": requester["id"],
+        "user_id": target_user["id"],
         "entitlement_id": entitlement["id"],
     }
 
-    revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+    revoke_test_assignment(
+        payload["requester_id"],
+        payload["user_id"],
+        payload["entitlement_id"],
+    )
 
     try:
         grant_response = client.post("/access/grant", json=payload)
@@ -164,17 +218,28 @@ def test_granted_access_appears_in_user_access() -> None:
             for assignment in assignments
         )
     finally:
-        revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+        revoke_test_assignment(
+            payload["requester_id"],
+            payload["user_id"],
+            payload["entitlement_id"],
+        )
 
 
 def test_access_can_be_revoked() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
     entitlement = get_salesforce_user_entitlement()
     payload = {
-        "user_id": 1,
+        "requester_id": requester["id"],
+        "user_id": target_user["id"],
         "entitlement_id": entitlement["id"],
     }
 
-    revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+    revoke_test_assignment(
+        payload["requester_id"],
+        payload["user_id"],
+        payload["entitlement_id"],
+    )
 
     grant_response = client.post("/access/grant", json=payload)
     revoke_response = client.post("/access/revoke", json=payload)
@@ -189,13 +254,20 @@ def test_access_can_be_revoked() -> None:
 
 
 def test_revoking_missing_access_returns_404() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
     entitlement = get_salesforce_user_entitlement()
     payload = {
-        "user_id": 1,
+        "requester_id": requester["id"],
+        "user_id": target_user["id"],
         "entitlement_id": entitlement["id"],
     }
 
-    revoke_test_assignment(payload["user_id"], payload["entitlement_id"])
+    revoke_test_assignment(
+        payload["requester_id"],
+        payload["user_id"],
+        payload["entitlement_id"],
+    )
 
     response = client.post("/access/revoke", json=payload)
 
@@ -204,11 +276,13 @@ def test_revoking_missing_access_returns_404() -> None:
 
 
 def test_missing_user_returns_404_when_granting() -> None:
+    requester = get_administrator_requester()
     entitlement = get_salesforce_user_entitlement()
 
     response = client.post(
         "/access/grant",
         json={
+            "requester_id": requester["id"],
             "user_id": 999999,
             "entitlement_id": entitlement["id"],
         },
@@ -219,10 +293,14 @@ def test_missing_user_returns_404_when_granting() -> None:
 
 
 def test_missing_entitlement_returns_404_when_granting() -> None:
+    requester = get_administrator_requester()
+    target_user = get_employee_target()
+
     response = client.post(
         "/access/grant",
         json={
-            "user_id": 1,
+            "requester_id": requester["id"],
+            "user_id": target_user["id"],
             "entitlement_id": 999999,
         },
     )
