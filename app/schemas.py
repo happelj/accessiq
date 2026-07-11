@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -20,3 +22,36 @@ class UserResponse(BaseModel):
     email: EmailStr
     department: str
     active: bool
+
+
+class ApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+
+
+class EntitlementResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    application_id: int
+
+
+class AccessGrantRequest(BaseModel):
+    user_id: int
+    entitlement_id: int
+
+
+class AccessResponse(BaseModel):
+    id: int
+    user_id: int
+    application_id: int
+    application: str
+    entitlement_id: int
+    entitlement: str
+    status: str
+    granted_at: datetime
