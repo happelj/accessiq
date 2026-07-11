@@ -1,27 +1,33 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+
 from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .audit_service import create_audit_event
+from .auth import create_access_token, get_current_user, hash_password, verify_password
+from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
 from .models import AccessAssignment, Application, AuditEvent, Entitlement, User
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .schemas import (
     AccessActionRequest,
     AccessResponse,
-    AuditEventResponse,
-    ApplicationResponse,
     AuditAction,
+    AuditEventResponse,
     AuditResult,
+    ApplicationResponse,
     EntitlementResponse,
     HealthResponse,
+    LoginRequest,
+    TokenResponse,
     UserCreate,
     UserResponse,
 )
 
+SEED_USER_PASSWORD = "Password123!"
 SEEDED_USERS = [
     {
         "name": "Bob Smith",
@@ -109,16 +115,22 @@ def ensure_schema_compatibility() -> None:
     inspector = inspect(engine)
     user_columns = {column["name"] for column in inspector.get_columns("users")}
 
-    if "operator_role" in user_columns:
-        return
-
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                "ALTER TABLE users "
-                "ADD COLUMN operator_role VARCHAR(50) NOT NULL DEFAULT 'employee'"
+        if "operator_role" not in user_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN operator_role VARCHAR(50) NOT NULL DEFAULT 'employee'"
+                )
             )
-        )
+
+        if "password_hash" not in user_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN password_hash VARCHAR(255) NOT NULL DEFAULT ''"
+                )
+            )
 
 
 def seed_users() -> None:
@@ -128,13 +140,21 @@ def seed_users() -> None:
             user = db.scalar(select(User).where(User.email == user_data["email"]))
 
             if user is None:
-                db.add(User(**user_data))
+                db.add(
+                    User(
+                        **user_data,
+                        password_hash=hash_password(SEED_USER_PASSWORD),
+                    )
+                )
                 continue
 
             user.name = user_data["name"]
             user.department = user_data["department"]
             user.active = user_data["active"]
             user.operator_role = user_data["operator_role"]
+
+            if not verify_password(SEED_USER_PASSWORD, user.password_hash):
+                user.password_hash = hash_password(SEED_USER_PASSWORD)
 
         db.commit()
 
@@ -259,6 +279,35 @@ def health_check(db: Session = Depends(get_db)) -> HealthResponse:
     return HealthResponse(status="healthy")
 
 
+@app.post("/login", response_model=TokenResponse)
+def login(
+    credentials: LoginRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = db.scalar(
+        select(User).where(User.email == credentials.email.lower())
+    )
+
+    if user is None or not verify_password(
+        credentials.password,
+        user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    settings = get_auth_settings()
+    access_token = create_access_token(subject=str(user.id))
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
 @app.get("/users", response_model=list[UserResponse])
 def list_users(db: Session = Depends(get_db)) -> list[User]:
     users = db.scalars(select(User).order_by(User.id)).all()
@@ -308,6 +357,7 @@ def create_user(
         department=user_data.department,
         active=user_data.active,
         operator_role=user_data.operator_role,
+        password_hash=hash_password(SEED_USER_PASSWORD),
     )
 
     db.add(user)
@@ -382,17 +432,10 @@ def list_user_access(
 )
 def grant_access(
     access_data: AccessActionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccessResponse:
-    requester = db.get(User, access_data.requester_id)
-
-    if requester is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Requester not found",
-        )
-
-    user = db.get(User, access_data.user_id)
+    user = db.get(User, access_data.target_user_id)
 
     if user is None:
         raise HTTPException(
@@ -416,7 +459,7 @@ def grant_access(
 
     existing_assignment = db.scalar(
         select(AccessAssignment).where(
-            AccessAssignment.user_id == access_data.user_id,
+            AccessAssignment.user_id == access_data.target_user_id,
             AccessAssignment.entitlement_id == access_data.entitlement_id,
         )
     )
@@ -425,8 +468,8 @@ def grant_access(
         try:
             create_audit_event(
                 db,
-                requester_id=access_data.requester_id,
-                target_user_id=access_data.user_id,
+                requester_id=current_user.id,
+                target_user_id=access_data.target_user_id,
                 action="grant",
                 application_id=application_id,
                 entitlement_id=access_data.entitlement_id,
@@ -446,14 +489,14 @@ def grant_access(
             detail="User already has this access",
         )
 
-    policy_decision = evaluate_grant_policy(requester, user, entitlement)
+    policy_decision = evaluate_grant_policy(current_user, user, entitlement)
 
     if not policy_decision.allowed:
         try:
             create_audit_event(
                 db,
-                requester_id=access_data.requester_id,
-                target_user_id=access_data.user_id,
+                requester_id=current_user.id,
+                target_user_id=access_data.target_user_id,
                 action="grant",
                 application_id=application_id,
                 entitlement_id=access_data.entitlement_id,
@@ -474,7 +517,7 @@ def grant_access(
         )
 
     assignment = AccessAssignment(
-        user_id=access_data.user_id,
+        user_id=access_data.target_user_id,
         entitlement_id=access_data.entitlement_id,
     )
 
@@ -484,8 +527,8 @@ def grant_access(
         assignment_id = assignment.id
         create_audit_event(
             db,
-            requester_id=access_data.requester_id,
-            target_user_id=access_data.user_id,
+            requester_id=current_user.id,
+            target_user_id=access_data.target_user_id,
             action="grant",
             application_id=application_id,
             entitlement_id=access_data.entitlement_id,
@@ -522,17 +565,10 @@ def grant_access(
 @app.post("/access/revoke")
 def revoke_access(
     access_data: AccessActionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, int | str]:
-    requester = db.get(User, access_data.requester_id)
-
-    if requester is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Requester not found",
-        )
-
-    user = db.get(User, access_data.user_id)
+    user = db.get(User, access_data.target_user_id)
 
     if user is None:
         raise HTTPException(
@@ -556,7 +592,7 @@ def revoke_access(
 
     assignment = db.scalar(
         select(AccessAssignment).where(
-            AccessAssignment.user_id == access_data.user_id,
+            AccessAssignment.user_id == access_data.target_user_id,
             AccessAssignment.entitlement_id == access_data.entitlement_id,
         )
     )
@@ -565,8 +601,8 @@ def revoke_access(
         try:
             create_audit_event(
                 db,
-                requester_id=access_data.requester_id,
-                target_user_id=access_data.user_id,
+                requester_id=current_user.id,
+                target_user_id=access_data.target_user_id,
                 action="revoke",
                 application_id=application_id,
                 entitlement_id=access_data.entitlement_id,
@@ -586,14 +622,14 @@ def revoke_access(
             detail="Access assignment not found",
         )
 
-    policy_decision = evaluate_revoke_policy(requester, user, entitlement)
+    policy_decision = evaluate_revoke_policy(current_user, user, entitlement)
 
     if not policy_decision.allowed:
         try:
             create_audit_event(
                 db,
-                requester_id=access_data.requester_id,
-                target_user_id=access_data.user_id,
+                requester_id=current_user.id,
+                target_user_id=access_data.target_user_id,
                 action="revoke",
                 application_id=application_id,
                 entitlement_id=access_data.entitlement_id,
@@ -617,8 +653,8 @@ def revoke_access(
         db.delete(assignment)
         create_audit_event(
             db,
-            requester_id=access_data.requester_id,
-            target_user_id=access_data.user_id,
+            requester_id=current_user.id,
+            target_user_id=access_data.target_user_id,
             action="revoke",
             application_id=application_id,
             entitlement_id=access_data.entitlement_id,
@@ -635,7 +671,7 @@ def revoke_access(
 
     return {
         "status": "revoked",
-        "user_id": access_data.user_id,
+        "user_id": access_data.target_user_id,
         "entitlement_id": access_data.entitlement_id,
     }
 
@@ -646,8 +682,11 @@ def list_audit_events(
     target_user_id: int | None = None,
     result: AuditResult | None = None,
     action: AuditAction | None = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AuditEventResponse]:
+    del current_user
+
     statement = select(AuditEvent).options(
         joinedload(AuditEvent.application),
         joinedload(AuditEvent.entitlement),

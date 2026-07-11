@@ -31,6 +31,17 @@ class UserResponse(BaseModel):
     operator_role: OperatorRole
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+
+
 class ApplicationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,8 +60,9 @@ class EntitlementResponse(BaseModel):
 
 
 class AccessActionRequest(BaseModel):
-    requester_id: int
-    user_id: int
+    model_config = ConfigDict(extra="forbid")
+
+    target_user_id: int
     entitlement_id: int
 
 

@@ -9,6 +9,20 @@ from app.main import app
 client = TestClient(app)
 
 
+def auth_headers(email: str) -> dict[str, str]:
+    response = client.post(
+        "/login",
+        json={
+            "email": email,
+            "password": "Password123!",
+        },
+    )
+
+    assert response.status_code == 200
+
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def find_user_by_email(email: str) -> dict[str, Any]:
     response = client.get("/users")
 
@@ -68,15 +82,14 @@ def find_entitlement_by_slug(
 
 
 def revoke_test_assignment(
-    requester_id: int,
     user_id: int,
     entitlement_id: int,
 ) -> None:
     response = client.post(
         "/access/revoke",
+        headers=auth_headers("alice@example.com"),
         json={
-            "requester_id": requester_id,
-            "user_id": user_id,
+            "target_user_id": user_id,
             "entitlement_id": entitlement_id,
         },
     )
@@ -103,7 +116,11 @@ def create_inactive_user() -> dict[str, Any]:
 
 
 def get_audit_events(**filters: Any) -> list[dict[str, Any]]:
-    response = client.get("/audit-events", params=filters)
+    response = client.get(
+        "/audit-events",
+        headers=auth_headers("alice@example.com"),
+        params=filters,
+    )
 
     assert response.status_code == 200
 
@@ -149,9 +166,9 @@ def test_inactive_target_users_are_denied_access() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -167,9 +184,9 @@ def test_finance_portal_access_is_denied_to_non_finance_users() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -185,14 +202,14 @@ def test_administrator_can_grant_administrator_access() -> None:
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "administrator")
 
-    revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
 
     try:
         response = client.post(
             "/access/grant",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
@@ -200,7 +217,7 @@ def test_administrator_can_grant_administrator_access() -> None:
         assert response.status_code == 201
         assert response.json()["entitlement"] == "Salesforce Administrator"
     finally:
-        revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+        revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
 def test_help_desk_cannot_grant_administrator_access() -> None:
@@ -210,9 +227,9 @@ def test_help_desk_cannot_grant_administrator_access() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -226,17 +243,16 @@ def test_help_desk_cannot_grant_administrator_access() -> None:
 def test_help_desk_can_grant_standard_access() -> None:
     requester = get_help_desk_user()
     target_user = get_employee()
-    admin = get_administrator()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(admin["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
 
     try:
         response = client.post(
             "/access/grant",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
@@ -244,7 +260,7 @@ def test_help_desk_can_grant_standard_access() -> None:
         assert response.status_code == 201
         assert response.json()["entitlement"] == "Salesforce User"
     finally:
-        revoke_test_assignment(admin["id"], target_user["id"], entitlement["id"])
+        revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
 def test_auditor_cannot_grant_access() -> None:
@@ -254,9 +270,9 @@ def test_auditor_cannot_grant_access() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -272,9 +288,9 @@ def test_employee_cannot_grant_access() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -290,9 +306,9 @@ def test_denied_grant_requests_create_audit_events() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -317,14 +333,14 @@ def test_successful_grants_create_audit_events() -> None:
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
 
     try:
         response = client.post(
             "/access/grant",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
@@ -340,7 +356,7 @@ def test_successful_grants_create_audit_events() -> None:
             reason="Access request approved",
         )
     finally:
-        revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+        revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
 def test_successful_revokes_create_audit_events() -> None:
@@ -348,20 +364,20 @@ def test_successful_revokes_create_audit_events() -> None:
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
     grant_response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
     revoke_response = client.post(
         "/access/revoke",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": entitlement["id"],
         },
     )
@@ -385,22 +401,22 @@ def test_denied_revokes_create_audit_events() -> None:
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(administrator["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
 
     try:
         grant_response = client.post(
             "/access/grant",
+            headers=auth_headers(administrator["email"]),
             json={
-                "requester_id": administrator["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
         revoke_response = client.post(
             "/access/revoke",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
@@ -418,11 +434,7 @@ def test_denied_revokes_create_audit_events() -> None:
             reason="Auditors cannot revoke access",
         )
     finally:
-        revoke_test_assignment(
-            administrator["id"],
-            target_user["id"],
-            entitlement["id"],
-        )
+        revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
 def test_audit_filtering_by_requester_works() -> None:
@@ -455,32 +467,15 @@ def test_audit_filtering_by_result_works() -> None:
     assert all(event["result"] == "denied" for event in events)
 
 
-def test_missing_requester_returns_404() -> None:
-    target_user = get_employee()
-    entitlement = find_entitlement_by_slug("salesforce", "user")
-
-    response = client.post(
-        "/access/grant",
-        json={
-            "requester_id": 999999,
-            "user_id": target_user["id"],
-            "entitlement_id": entitlement["id"],
-        },
-    )
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Requester not found"}
-
-
 def test_missing_target_user_returns_404() -> None:
     requester = get_administrator()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": 999999,
+            "target_user_id": 999999,
             "entitlement_id": entitlement["id"],
         },
     )
@@ -495,9 +490,9 @@ def test_missing_entitlement_returns_404() -> None:
 
     response = client.post(
         "/access/grant",
+        headers=auth_headers(requester["email"]),
         json={
-            "requester_id": requester["id"],
-            "user_id": target_user["id"],
+            "target_user_id": target_user["id"],
             "entitlement_id": 999999,
         },
     )
@@ -511,22 +506,22 @@ def test_duplicate_grants_return_409_and_create_denied_audit_events() -> None:
     target_user = get_employee()
     entitlement = find_entitlement_by_slug("salesforce", "user")
 
-    revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+    revoke_test_assignment(target_user["id"], entitlement["id"])
 
     try:
         first_response = client.post(
             "/access/grant",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
         second_response = client.post(
             "/access/grant",
+            headers=auth_headers(requester["email"]),
             json={
-                "requester_id": requester["id"],
-                "user_id": target_user["id"],
+                "target_user_id": target_user["id"],
                 "entitlement_id": entitlement["id"],
             },
         )
@@ -546,4 +541,4 @@ def test_duplicate_grants_return_409_and_create_denied_audit_events() -> None:
             reason="User already has this access",
         )
     finally:
-        revoke_test_assignment(requester["id"], target_user["id"], entitlement["id"])
+        revoke_test_assignment(target_user["id"], entitlement["id"])

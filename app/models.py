@@ -26,6 +26,7 @@ class User(Base):
         default="employee",
         nullable=False,
     )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     access_assignments: Mapped[list[AccessAssignment]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
