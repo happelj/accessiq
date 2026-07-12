@@ -91,5 +91,66 @@ class EmployeeNumberChanged(DomainEvent):
     employee_number: str | None
 
 
+@dataclass(frozen=True)
+class ProvisioningStarted(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class ProvisioningCompleted(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ProvisioningFailed(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ConnectorCalled(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    attempt: int
+
+
+@dataclass(frozen=True)
+class ConnectorSucceeded(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    attempt: int
+    duration_ms: float
+
+
+@dataclass(frozen=True)
+class ConnectorFailed(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    attempt: int
+    retryable: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class ConnectorRetryScheduled(DomainEvent):
+    connector: str
+    operation: str
+    correlation_id: str
+    attempt: int
+    next_attempt: int
+    delay_ms: int
+    reason: str
+
+
 def event_time() -> datetime:
     return datetime.now(UTC)
