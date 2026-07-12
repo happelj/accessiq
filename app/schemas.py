@@ -36,6 +36,11 @@ AuditAction = Literal[
     "scim_enterprise_division_change",
     "scim_enterprise_employee_number_change",
     "scim_enterprise_provisioning_failure",
+    "connector_invocation",
+    "connector_success",
+    "connector_failure",
+    "connector_retry_scheduled",
+    "connector_provisioning_completed",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
@@ -150,3 +155,18 @@ class AuditEventResponse(BaseModel):
     result: str
     reason: str
     created_at: datetime
+
+
+class ConnectorResponse(BaseModel):
+    name: str
+    display_name: str
+    enabled: bool
+    supported_operations: list[str]
+
+
+class ConnectorHealthResponse(BaseModel):
+    connector: str
+    status: str
+    message: str
+    timestamp: datetime
+    details: dict[str, object]

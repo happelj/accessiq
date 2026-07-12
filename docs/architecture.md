@@ -15,6 +15,9 @@ flowchart LR
     Services --> Policy["Business Policy Engine"]
     Services --> Audit["Audit Logging"]
     Services --> Events["Domain Events"]
+    Events --> Orchestrator["Provisioning Orchestrator"]
+    Orchestrator --> Registry["Connector Registry"]
+    Registry --> Connectors["Connector Implementations"]
     Audit --> DB["Database"]
     Services --> DB
 ```
@@ -31,6 +34,9 @@ flowchart TD
     Policy["Policy engine"]
     Audit["Audit event"]
     Events["In-process domain events"]
+    Orchestrator["Provisioning orchestrator"]
+    Registry["Connector registry"]
+    Connectors["Connector implementations"]
     Database["SQLAlchemy models"]
 
     Route --> Validation
@@ -38,6 +44,9 @@ flowchart TD
     Service --> Policy
     Service --> Audit
     Service --> Events
+    Events --> Orchestrator
+    Orchestrator --> Registry
+    Registry --> Connectors
     Audit --> Database
     Service --> Database
 ```
@@ -97,6 +106,40 @@ Reusable services own mutation logic:
 - `EnterpriseUserService`: enterprise profile mutation, employeeNumber uniqueness, manager validation, cycle prevention.
 
 Services do not know FastAPI request objects. SCIM provisioning helpers translate protocol payloads and service errors into SCIM responses.
+
+## Connector Framework
+
+The connector framework is isolated under `app/connectors`. It provides production-style extension points for future outbound provisioning without integrating with external SaaS APIs in this milestone.
+
+```mermaid
+flowchart TD
+    Request["Domain event or service request"]
+    Orchestrator["ProvisioningOrchestrator"]
+    Retry["RetryPolicy"]
+    Registry["ConnectorRegistry"]
+    Connector["IdentityConnector"]
+    Result["ConnectorResult"]
+    Audit["Audit event"]
+    Events["Connector domain events"]
+
+    Request --> Orchestrator
+    Orchestrator --> Retry
+    Orchestrator --> Registry
+    Registry --> Connector
+    Connector --> Result
+    Result --> Orchestrator
+    Orchestrator --> Audit
+    Orchestrator --> Events
+```
+
+Current mock connector implementations are deterministic:
+
+- Salesforce
+- GitHub
+- Zendesk
+- Finance
+
+They implement user lifecycle, group lifecycle, group membership, entitlement grant/revoke, and health check operations. Simulation modes cover success, validation failure, timeout, rate limiting, retryable failure, non-retryable failure, degraded health, and unavailable health.
 
 ## SCIM Architecture
 
@@ -176,20 +219,26 @@ Current event families include:
 - enterprise profile created/updated
 - enterprise attributes changed
 - manager changed
+- connector called/succeeded/failed
+- connector retry scheduled
+- provisioning started/completed/failed
 
 ## Future Connector Architecture
 
-Future connector delivery can subscribe to domain events and dispatch outbound changes to SaaS applications.
+Future connector delivery can subscribe to domain events and dispatch outbound changes to SaaS applications through the same connector interface and orchestrator.
 
 ```mermaid
 flowchart LR
     Events["Domain events"] --> Queue["Future durable queue"]
     Queue --> Worker["Connector worker"]
-    Worker --> SaaS["Downstream SaaS APIs"]
+    Worker --> Orchestrator["ProvisioningOrchestrator"]
+    Orchestrator --> Registry["ConnectorRegistry"]
+    Registry --> Connector["Real connector"]
+    Connector --> SaaS["Downstream SaaS APIs"]
     Worker --> Audit["Delivery audit"]
 ```
 
-The current implementation intentionally does not include the queue or worker.
+The current implementation intentionally does not include the queue, worker, or real SaaS API calls.
 
 ## Future AI Explanation Architecture
 

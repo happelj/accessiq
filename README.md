@@ -38,6 +38,7 @@ docker compose up --build
 
 - [Architecture](docs/architecture.md)
 - [SCIM implementation](docs/scim.md)
+- [Connector framework](docs/connectors.md)
 
 ## Authentication And API Authorization
 
@@ -64,6 +65,11 @@ Set these environment variables as needed:
 - `JWT_SECRET`: signing secret for access tokens. Default is development-only.
 - `JWT_ALGORITHM`: JWT signing algorithm. Default: `HS256`.
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime in minutes. Default: `30`.
+- `ENABLE_SALESFORCE_CONNECTOR`: enables the mock Salesforce connector. Default: `true`.
+- `ENABLE_GITHUB_CONNECTOR`: enables the mock GitHub connector. Default: `true`.
+- `ENABLE_ZENDESK_CONNECTOR`: enables the mock Zendesk connector. Default: `true`.
+- `ENABLE_FINANCE_CONNECTOR`: enables the mock Finance connector. Default: `true`.
+- `SALESFORCE_API_BASE_URL`, `GITHUB_API_BASE_URL`, `ZENDESK_API_BASE_URL`, `FINANCE_API_BASE_URL`: reserved for future real connector credentials and endpoints. Milestone 7A does not call external APIs.
 
 ### Login Example
 
@@ -126,6 +132,9 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access/grant` | `security_admin`, `iam_admin` |
 | `POST /access/revoke` | `security_admin`, `iam_admin` |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /connectors` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /connectors/{name}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /connectors/{name}/health` | `security_admin`, `iam_admin`, `auditor` |
 
 ## SCIM 2.0 User And Group Provisioning
 
@@ -368,7 +377,7 @@ Supported paths:
 
 Every SCIM provisioning action records an audit event through the existing audit system using the seeded `SCIM Provisioning` application and the `SCIM User Lifecycle`, `SCIM Enterprise User Extension`, or `SCIM Group Lifecycle` entitlement. Successful creates, updates, deactivations, enterprise profile changes, manager changes, group renames, and group membership changes use SCIM-specific audit actions. Duplicate conflicts, unknown users or groups, malformed PATCH requests, invalid payloads, and audit failures are handled with transaction rollback and SCIM-shaped errors.
 
-SCIM provisioning also publishes lightweight in-process domain events for user provisioning, enterprise profile creation/update, manager and enterprise attribute changes, group creation, group updates, and group membership add/remove/replace operations. These events are intentionally local-only and do not implement connector delivery.
+SCIM provisioning also publishes lightweight in-process domain events for user provisioning, enterprise profile creation/update, manager and enterprise attribute changes, group creation, group updates, and group membership add/remove/replace operations. These events are intentionally local-only. Future workers can subscribe to these events and call the connector orchestrator without changing connector implementations.
 
 ### SCIM User Query Parameters
 
@@ -446,9 +455,71 @@ Projection is applied to SCIM Group resources while preserving the required `sch
 
 Future SCIM milestones:
 
-- `Connector Framework`: outbound integration delivery to downstream applications.
 - `Access Reviews`: review campaigns, decisions, and remediation.
 - `AI Explanations`: explainable access and provisioning decisions using deterministic system context.
+
+## Connector Framework
+
+AccessIQ includes a synchronous connector framework for future outbound provisioning delivery. It intentionally does not call Salesforce, GitHub, Zendesk, Finance, Microsoft Entra ID, Okta, Ping Identity, SailPoint, ForgeRock, OneLogin, or any other external service.
+
+```text
+Domain Event or Service Request
+  -> Provisioning Orchestrator
+  -> Connector Registry
+  -> IdentityConnector implementation
+  -> ConnectorResult
+  -> Audit Logging
+  -> Domain Events
+```
+
+The framework lives under `app/connectors`:
+
+- `IdentityConnector`: abstract interface for user, group, and entitlement operations.
+- `ConnectorRegistry`: registers, lists, and resolves enabled connectors by name.
+- `ProvisioningOrchestrator`: executes connector operations, applies retry decisions, writes audit events when audit context is supplied, and publishes connector domain events.
+- `RetryPolicy`: calculates retry decisions and backoff delays without sleeping.
+- `ConnectorResult`: structured result model with connector, operation, status, message, timestamp, duration, retryability, correlation ID, and details.
+- `ConnectorError` subclasses: reusable authentication, authorization, validation, rate limit, timeout, retryable, and configuration errors.
+- Mock connectors: deterministic Salesforce, GitHub, Zendesk, and Finance implementations.
+
+Supported connector operations:
+
+- `create_user`
+- `update_user`
+- `disable_user`
+- `delete_user`
+- `create_group`
+- `update_group`
+- `delete_group`
+- `add_group_member`
+- `remove_group_member`
+- `grant_entitlement`
+- `revoke_entitlement`
+
+Connector result statuses:
+
+- `SUCCESS`
+- `FAILED`
+- `RETRYABLE`
+- `SKIPPED`
+
+Connector health states:
+
+- `HEALTHY`
+- `DEGRADED`
+- `UNAVAILABLE`
+
+The read-only connector metadata endpoints are protected by existing JWT and API RBAC:
+
+```bash
+curl http://localhost:8000/connectors \
+  -H "Authorization: Bearer <jwt>"
+
+curl http://localhost:8000/connectors/salesforce/health \
+  -H "Authorization: Bearer <jwt>"
+```
+
+Connector executions use the seeded `Connector Framework` application and `Connector Execution` entitlement for audit events. The current framework is synchronous by design; future background workers can subscribe to domain events and invoke the same orchestrator without refactoring connector implementations.
 
 ## Policy Enforcement And Audit Logging
 

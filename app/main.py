@@ -11,6 +11,7 @@ from .audit_service import create_audit_event
 from .auth import create_access_token, hash_password, verify_password
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
+from .connectors.routes import router as connector_router
 from .models import (
     AccessAssignment,
     Application,
@@ -93,6 +94,7 @@ SEEDED_APPLICATIONS = [
     {"name": "Finance Portal", "slug": "finance-portal"},
     {"name": "GitHub", "slug": "github"},
     {"name": "SCIM Provisioning", "slug": "scim-provisioning"},
+    {"name": "Connector Framework", "slug": "connector-framework"},
 ]
 
 SEEDED_ENTITLEMENTS = [
@@ -150,6 +152,11 @@ SEEDED_ENTITLEMENTS = [
         "application_slug": "scim-provisioning",
         "name": "SCIM Enterprise User Extension",
         "slug": "enterprise-user-extension",
+    },
+    {
+        "application_slug": "connector-framework",
+        "name": "Connector Execution",
+        "slug": "connector-execution",
     },
 ]
 
@@ -364,11 +371,18 @@ app = FastAPI(
                 "provider integration."
             ),
         },
+        {
+            "name": "Connectors",
+            "description": (
+                "Provisioning connector metadata and deterministic health checks."
+            ),
+        },
     ],
 )
 
 register_scim_exception_handlers(app)
 app.include_router(scim_router)
+app.include_router(connector_router)
 
 
 @app.middleware("http")
