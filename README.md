@@ -40,6 +40,7 @@ docker compose up --build
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
+- [Access reviews and certification campaigns](docs/access_reviews.md)
 
 ## Authentication And API Authorization
 
@@ -139,6 +140,16 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /provisioning/jobs` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /provisioning/jobs/{job_id}` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /provisioning/history` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /access-reviews/campaigns` | `security_admin`, `iam_admin` |
+| `GET /access-reviews/campaigns` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /access-reviews/campaigns/{campaign_id}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /access-reviews/campaigns/{campaign_id}/summary` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /access-reviews/campaigns/{campaign_id}/start` | `security_admin`, `iam_admin` |
+| `POST /access-reviews/campaigns/{campaign_id}/cancel` | `security_admin`, `iam_admin` |
+| `POST /access-reviews/campaigns/{campaign_id}/complete` | `security_admin`, `iam_admin` |
+| `GET /access-reviews/campaigns/{campaign_id}/items` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /access-reviews/items/{item_id}` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /access-reviews/items/{item_id}/decision` | `security_admin`, `iam_admin`, `auditor` |
 
 ## SCIM 2.0 User And Group Provisioning
 
@@ -574,6 +585,52 @@ curl "http://localhost:8000/provisioning/history?correlation_id=<id>" \
 Supported job filters include `connector`, `operation`, `status`, `correlation_id`, `target_type`, and `target_id`. Supported history filters include `job_id`, `connector`, `operation`, `event_type`, `status`, and `correlation_id`. Both endpoints support `start_index`, `count`, `sort_by`, and `sort_order`.
 
 Milestone 7B records retry decisions as history entries and audit events. It does not implement scheduled retries, queues, background workers, or asynchronous execution.
+
+## Access Reviews And Certification Campaigns
+
+AccessIQ includes an identity governance layer for access certification campaigns. A campaign snapshots current access assignments into review items, records reviewer decisions, and preserves those decisions for future remediation. It does not revoke access, call connectors, or run background processing.
+
+```text
+REST API
+  -> JWT Authentication
+  -> API RBAC
+  -> Governance Services
+  -> Audit Logging
+  -> Domain Events
+  -> Database
+```
+
+Campaign lifecycle:
+
+- `DRAFT`: campaign has been created but review items have not been generated.
+- `ACTIVE`: current access assignments have been captured as review items.
+- `COMPLETED`: all review items have a recorded decision.
+- `CANCELLED`: campaign is closed without completing certification.
+
+Review decisions:
+
+- `APPROVE`: access is certified as still appropriate.
+- `REVOKE`: access is marked for future remediation.
+- `ABSTAIN`: reviewer records no certification decision.
+
+Read/write examples:
+
+```bash
+curl -X POST http://localhost:8000/access-reviews/campaigns \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Q3 Access Review","reviewer_id":1}'
+
+curl -X POST http://localhost:8000/access-reviews/campaigns/1/start \
+  -H "Authorization: Bearer <jwt>"
+
+curl -X POST http://localhost:8000/access-reviews/items/1/decision \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"REVOKE","comments":"No longer required"}'
+```
+
+Summary endpoints expose pending item count, completed item count, approval count, revocation count, abstain count, and completion percentage. Revoke decisions are governance records only; a future remediation worker can consume them and invoke the provisioning engine.
 
 ## Policy Enforcement And Audit Logging
 

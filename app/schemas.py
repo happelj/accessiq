@@ -45,6 +45,14 @@ AuditAction = Literal[
     "provisioning_job_completed",
     "provisioning_job_failed",
     "provisioning_retry_recorded",
+    "certification_campaign_created",
+    "certification_campaign_started",
+    "certification_campaign_cancelled",
+    "certification_campaign_completed",
+    "certification_review_approved",
+    "certification_review_revoked",
+    "certification_review_abstained",
+    "certification_decision_updated",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 

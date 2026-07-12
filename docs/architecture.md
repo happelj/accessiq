@@ -1,6 +1,6 @@
 # AccessIQ Architecture
 
-AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, and SCIM provisioning. The system is intentionally modular so future connector delivery, access reviews, and AI explanations can be added without rewriting the core API.
+AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, SCIM provisioning, connector execution, provisioning history, and access review governance. The system is intentionally modular so future remediation and AI explanations can be added without rewriting the core API.
 
 ## System Overview
 
@@ -12,9 +12,13 @@ flowchart LR
     REST --> Auth
     Auth --> RBAC["API RBAC"]
     RBAC --> Services["Service Layer"]
+    Services --> Governance["Governance Services"]
     Services --> Policy["Business Policy Engine"]
     Services --> Audit["Audit Logging"]
     Services --> Events["Domain Events"]
+    Governance --> Audit
+    Governance --> Events
+    Governance --> DB
     Events --> Orchestrator["Provisioning Orchestrator"]
     Orchestrator --> Jobs["Provisioning Jobs"]
     Orchestrator --> Registry["Connector Registry"]
@@ -33,6 +37,7 @@ flowchart TD
     Route["FastAPI route"]
     Validation["Protocol validation"]
     Service["Service layer"]
+    Governance["Governance services"]
     Policy["Policy engine"]
     Audit["Audit event"]
     Events["In-process domain events"]
@@ -44,6 +49,7 @@ flowchart TD
 
     Route --> Validation
     Validation --> Service
+    Service --> Governance
     Service --> Policy
     Service --> Audit
     Service --> Events
@@ -109,8 +115,49 @@ Reusable services own mutation logic:
 - `GroupService`: group creation, replacement, patching, membership validation.
 - `EnterpriseUserService`: enterprise profile mutation, employeeNumber uniqueness, manager validation, cycle prevention.
 - `ProvisioningJobService`: provisioning job lifecycle, immutable history, retry tracking, and query filtering.
+- `CampaignService`: certification campaign lifecycle, item generation, summary counts, and governance audit events.
+- `ReviewService`: review item lookup, decision recording, decision updates, and decision audit events.
 
 Services do not know FastAPI request objects. SCIM provisioning helpers translate protocol payloads and service errors into SCIM responses.
+
+## Governance Services
+
+Access reviews are isolated under `app/governance`. The governance layer records certification decisions and prepares data for future remediation. It does not revoke access, call connectors, or run background work.
+
+```mermaid
+flowchart TD
+    Route["Access review routes"]
+    Campaigns["CampaignService"]
+    Reviews["ReviewService"]
+    Assignments["Current access assignments"]
+    Items["CertificationReviewItem"]
+    Decisions["CertificationDecision"]
+    Audit["Audit events"]
+    Events["Certification domain events"]
+
+    Route --> Campaigns
+    Route --> Reviews
+    Campaigns --> Assignments
+    Campaigns --> Items
+    Reviews --> Decisions
+    Campaigns --> Audit
+    Reviews --> Audit
+    Campaigns --> Events
+    Reviews --> Events
+```
+
+Campaign statuses are `DRAFT`, `ACTIVE`, `COMPLETED`, and `CANCELLED`. Starting a campaign generates one review item for each active access assignment at that time. Review decisions can be `APPROVE`, `REVOKE`, or `ABSTAIN`; revoke decisions are retained for later remediation.
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT
+    DRAFT --> ACTIVE: start
+    DRAFT --> CANCELLED: cancel
+    ACTIVE --> COMPLETED: all items decided
+    ACTIVE --> CANCELLED: cancel
+    COMPLETED --> [*]
+    CANCELLED --> [*]
+```
 
 ## Connector Framework
 
@@ -258,6 +305,8 @@ Current event families include:
 - provisioning started/completed/failed
 - provisioning job created/started/completed/failed
 - provisioning retry recorded
+- certification campaign created/started/completed/cancelled
+- certification decision recorded/updated
 
 ## Future Connector Architecture
 
