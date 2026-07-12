@@ -41,6 +41,10 @@ AuditAction = Literal[
     "connector_failure",
     "connector_retry_scheduled",
     "connector_provisioning_completed",
+    "provisioning_job_created",
+    "provisioning_job_completed",
+    "provisioning_job_failed",
+    "provisioning_retry_recorded",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
@@ -154,6 +158,7 @@ class AuditEventResponse(BaseModel):
     entitlement: str
     result: str
     reason: str
+    correlation_id: str | None = None
     created_at: datetime
 
 
@@ -170,3 +175,42 @@ class ConnectorHealthResponse(BaseModel):
     message: str
     timestamp: datetime
     details: dict[str, object]
+
+
+class ProvisioningJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    correlation_id: str
+    connector: str
+    operation: str
+    target_type: str
+    target_id: str | None
+    status: str
+    attempt_count: int
+    retry_count: int
+    max_attempts: int
+    retryable: bool
+    last_error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_ms: float | None
+
+
+class ProvisioningHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+    event_type: str
+    status: str
+    message: str
+    attempt: int
+    retryable: bool
+    duration_ms: float | None
+    details: dict[str, object]
+    created_at: datetime

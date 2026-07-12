@@ -39,6 +39,7 @@ docker compose up --build
 - [Architecture](docs/architecture.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
+- [Provisioning jobs and history](docs/provisioning.md)
 
 ## Authentication And API Authorization
 
@@ -135,6 +136,9 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /connectors` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /connectors/{name}` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /connectors/{name}/health` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /provisioning/jobs` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /provisioning/jobs/{job_id}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /provisioning/history` | `security_admin`, `iam_admin`, `auditor` |
 
 ## SCIM 2.0 User And Group Provisioning
 
@@ -465,9 +469,11 @@ AccessIQ includes a synchronous connector framework for future outbound provisio
 ```text
 Domain Event or Service Request
   -> Provisioning Orchestrator
+  -> Provisioning Job
   -> Connector Registry
   -> IdentityConnector implementation
   -> ConnectorResult
+  -> Provisioning History
   -> Audit Logging
   -> Domain Events
 ```
@@ -521,6 +527,54 @@ curl http://localhost:8000/connectors/salesforce/health \
 
 Connector executions use the seeded `Connector Framework` application and `Connector Execution` entitlement for audit events. The current framework is synchronous by design; future background workers can subscribe to domain events and invoke the same orchestrator without refactoring connector implementations.
 
+## Provisioning Job Engine
+
+AccessIQ persists connector execution tracking in normalized provisioning job and history tables. This establishes the foundation for future retry schedulers, dashboards, reporting, and AI explanations without adding asynchronous processing.
+
+Every orchestrated connector execution with a database context follows this lifecycle:
+
+```text
+ProvisioningJob
+  -> Connector invocation
+  -> ConnectorResult
+  -> ProvisioningHistory
+  -> AuditEvent
+  -> Domain events
+```
+
+`ProvisioningJob` stores the current state of one connector execution:
+
+- `correlation_id`
+- `connector`
+- `operation`
+- `target_type`
+- `target_id`
+- `status`
+- `attempt_count`
+- `retry_count`
+- `max_attempts`
+- `retryable`
+- `last_error`
+- timestamps and duration
+
+`ProvisioningHistory` stores immutable event entries such as job created, job started, connector invocation, connector result, retry recorded, job completed, and job failed.
+
+Correlation IDs are generated automatically when a caller does not provide one. The same correlation ID is propagated across provisioning jobs, connector results, provisioning history, audit events, and domain events.
+
+Read-only provisioning activity endpoints:
+
+```bash
+curl "http://localhost:8000/provisioning/jobs?connector=salesforce" \
+  -H "Authorization: Bearer <jwt>"
+
+curl "http://localhost:8000/provisioning/history?correlation_id=<id>" \
+  -H "Authorization: Bearer <jwt>"
+```
+
+Supported job filters include `connector`, `operation`, `status`, `correlation_id`, `target_type`, and `target_id`. Supported history filters include `job_id`, `connector`, `operation`, `event_type`, `status`, and `correlation_id`. Both endpoints support `start_index`, `count`, `sort_by`, and `sort_order`.
+
+Milestone 7B records retry decisions as history entries and audit events. It does not implement scheduled retries, queues, background workers, or asynchronous execution.
+
 ## Policy Enforcement And Audit Logging
 
 AccessIQ uses deterministic Python policy checks for access grants and revokes. It does not call AI, LLMs, or external policy services.
@@ -560,6 +614,8 @@ curl "http://localhost:8000/audit-events?target_user_id=2" \
 curl "http://localhost:8000/audit-events?action=grant" \
   -H "Authorization: Bearer <jwt>"
 curl "http://localhost:8000/audit-events?result=denied" \
+  -H "Authorization: Bearer <jwt>"
+curl "http://localhost:8000/audit-events?correlation_id=<id>" \
   -H "Authorization: Bearer <jwt>"
 ```
 

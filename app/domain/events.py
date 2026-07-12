@@ -152,5 +152,51 @@ class ConnectorRetryScheduled(DomainEvent):
     reason: str
 
 
+@dataclass(frozen=True)
+class ProvisioningJobCreated(DomainEvent):
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+
+
+@dataclass(frozen=True)
+class ProvisioningJobStarted(DomainEvent):
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+
+
+@dataclass(frozen=True)
+class ProvisioningJobCompleted(DomainEvent):
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ProvisioningJobFailed(DomainEvent):
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+    retryable: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class ProvisioningRetryRecorded(DomainEvent):
+    job_id: int
+    correlation_id: str
+    connector: str
+    operation: str
+    attempt: int
+    next_attempt: int
+    delay_ms: int
+
+
 def event_time() -> datetime:
     return datetime.now(UTC)
