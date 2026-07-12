@@ -2,7 +2,7 @@
 
 Milestone 8A adds the governance foundation for AccessIQ. Access reviews are the certification workflow used by Identity Governance & Administration platforms to periodically ask reviewers whether users should keep access.
 
-This layer records decisions only. It does not revoke access, run connectors, schedule jobs, or perform background remediation.
+This layer records certification decisions. Remediation is a separate, explicit step after campaign completion so reviewers can certify access before any connector-backed action runs.
 
 ## IGA Concepts
 
@@ -18,12 +18,12 @@ flowchart TD
     Campaign["CertificationCampaign"]
     Items["CertificationReviewItem"]
     Decision["CertificationDecision"]
-    Remediation["Future remediation"]
+    Remediation["RemediationJob"]
 
     Access --> Campaign
     Campaign --> Items
     Items --> Decision
-    Decision -. "future milestone" .-> Remediation
+    Decision --> Remediation
 ```
 
 ## Data Model
@@ -166,12 +166,12 @@ Domain events:
 
 ## Future Remediation
 
-Future remediation can consume `REVOKE` decisions after campaign completion:
+Milestone 8B adds explicit remediation for completed campaigns. Remediation consumes `REVOKE` decisions and executes provisioning through the existing connector orchestrator:
 
 ```mermaid
 flowchart LR
     Decisions["Completed REVOKE decisions"]
-    Remediation["Future remediation service"]
+    Remediation["RemediationService"]
     Jobs["ProvisioningJobService"]
     Orchestrator["ProvisioningOrchestrator"]
     Connector["IdentityConnector"]
@@ -182,4 +182,4 @@ flowchart LR
     Orchestrator --> Connector
 ```
 
-The current milestone intentionally stops before remediation. This keeps governance decisions reviewable and auditable before any access removal occurs.
+`APPROVE` and `ABSTAIN` decisions are skipped. Remediation requires a completed campaign and creates one normalized `RemediationJob` per remediable review item. The job links back to the generated `ProvisioningJob` through a shared correlation ID.

@@ -169,3 +169,25 @@ flowchart LR
 ```
 
 The current implementation intentionally stops at persistence and read-only inspection.
+
+## Remediation Integration
+
+The remediation engine reuses the provisioning orchestrator instead of duplicating connector logic. A completed access review campaign with `REVOKE` decisions creates remediation jobs, and each remediation job invokes the orchestrator with a correlation ID.
+
+```mermaid
+flowchart TD
+    Decision["CertificationDecision REVOKE"]
+    Remediation["RemediationJob"]
+    Orchestrator["ProvisioningOrchestrator"]
+    Job["ProvisioningJob"]
+    History["ProvisioningHistory"]
+    Audit["AuditEvent"]
+
+    Decision --> Remediation
+    Remediation --> Orchestrator
+    Orchestrator --> Job
+    Job --> History
+    Orchestrator --> Audit
+```
+
+This keeps provisioning jobs and history as the operational source of truth for connector delivery while remediation jobs remain the governance source of truth for why the operation was requested.
