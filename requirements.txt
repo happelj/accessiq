@@ -3,3 +3,8 @@ uvicorn[standard]
 sqlalchemy
 psycopg[binary]
 pydantic
+email-validator
+passlib[argon2]
+python-jose[cryptography]
+pytest
+httpx
