@@ -283,5 +283,44 @@ class RemediationFailed(DomainEvent):
     correlation_id: str
 
 
+@dataclass(frozen=True)
+class DelegationAssigned(DomainEvent):
+    assignment_id: int
+    delegate_user_id: int
+    scope_type: str
+    scope_id: int
+    delegation_role: str
+
+
+@dataclass(frozen=True)
+class DelegationRemoved(DomainEvent):
+    assignment_id: int
+    delegate_user_id: int
+    scope_type: str
+    scope_id: int
+    delegation_role: str
+
+
+@dataclass(frozen=True)
+class DelegatedAccessGranted(DomainEvent):
+    assignment_id: int
+    delegate_user_id: int
+    target_user_id: int
+    entitlement_id: int
+    application_id: int
+    action: str
+
+
+@dataclass(frozen=True)
+class DelegatedAccessDenied(DomainEvent):
+    assignment_id: int | None
+    delegate_user_id: int
+    target_user_id: int
+    entitlement_id: int
+    application_id: int
+    action: str
+    reason: str
+
+
 def event_time() -> datetime:
     return datetime.now(UTC)

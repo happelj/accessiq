@@ -42,6 +42,7 @@ docker compose up --build
 - [Provisioning jobs and history](docs/provisioning.md)
 - [Access reviews and certification campaigns](docs/access_reviews.md)
 - [Remediation engine](docs/remediation.md)
+- [Delegated administration](docs/delegation.md)
 
 ## Authentication And API Authorization
 
@@ -50,12 +51,13 @@ AccessIQ separates authentication, API authorization, business policy evaluation
 ```text
 JWT Authentication
   -> API RBAC
+  -> Delegation Service
   -> Business Policy Engine
   -> Audit Logging
   -> Database
 ```
 
-Authentication answers who the caller is. API RBAC decides whether that authenticated caller may invoke a REST endpoint. The business policy engine then evaluates the requested access change. These layers are intentionally separate so endpoint security does not leak into entitlement policy logic.
+Authentication answers who the caller is. API RBAC decides whether that authenticated caller may invoke a REST endpoint or enter a delegated authorization path. The delegation service evaluates scoped authority for application, group, and entitlement administration. The business policy engine then evaluates the requested access change. These layers are intentionally separate so endpoint security does not leak into entitlement policy logic.
 
 Passwords are hashed with Argon2 through `passlib`. Plaintext passwords are never stored or compared directly. Seed users receive development passwords during startup, and existing databases are upgraded safely by adding a `password_hash` column when it is missing.
 
@@ -132,8 +134,8 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /applications` | Public |
 | `GET /applications/{application_id}/entitlements` | Public |
 | `GET /users/{user_id}/access` | Public |
-| `POST /access/grant` | `security_admin`, `iam_admin` |
-| `POST /access/revoke` | `security_admin`, `iam_admin` |
+| `POST /access/grant` | `security_admin`, `iam_admin`, or active scoped delegation |
+| `POST /access/revoke` | `security_admin`, `iam_admin`, or active scoped delegation |
 | `GET /audit-events` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /connectors` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /connectors/{name}` | `security_admin`, `iam_admin`, `auditor` |
@@ -154,6 +156,61 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /access-reviews/campaigns/{campaign_id}/remediate` | `security_admin`, `iam_admin` |
 | `GET /remediation/jobs` | `security_admin`, `iam_admin` |
 | `GET /remediation/jobs/{job_id}` | `security_admin`, `iam_admin` |
+| `POST /delegation/assignments` | `security_admin`, `iam_admin` |
+| `GET /delegation/assignments` | `security_admin`, `iam_admin` |
+| `GET /delegation/assignments/{assignment_id}` | `security_admin`, `iam_admin` |
+| `DELETE /delegation/assignments/{assignment_id}` | `security_admin`, `iam_admin` |
+
+### Delegated Administration
+
+Delegated administration lets AccessIQ grant scoped authority without making every operator a global administrator.
+
+```text
+JWT Authentication
+  -> API RBAC
+  -> DelegationService
+  -> Business Policy Engine
+  -> Access Mutation
+  -> Audit Event
+  -> Domain Events
+```
+
+Delegation assignments are normalized records with:
+
+- delegate user
+- scope type: `APPLICATION`, `GROUP`, or `ENTITLEMENT`
+- scope ID
+- delegation role
+- creator
+- optional expiration
+- active flag
+
+Supported delegation roles:
+
+- `APPLICATION_OWNER`
+- `APPLICATION_ADMINISTRATOR`
+- `GROUP_OWNER`
+- `GROUP_ADMINISTRATOR`
+- `ACCESS_REVIEWER`
+- `HELPDESK_DELEGATE`
+
+The current access grant/revoke integration supports application and entitlement scoped delegations for `APPLICATION_OWNER`, `APPLICATION_ADMINISTRATOR`, and `HELPDESK_DELEGATE`. Delegation never skips business policy. For example, Finance Portal grants still require a Finance target user, and administrator entitlements require a stronger delegated role.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/delegation/assignments \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "delegate_user_id": 2,
+        "scope_type": "APPLICATION",
+        "scope_id": 1,
+        "delegation_role": "HELPDESK_DELEGATE"
+      }'
+```
+
+Future organizational delegation can add `DEPARTMENT` and `ORGANIZATIONAL_UNIT` scopes without changing the current assignment lifecycle.
 
 ## SCIM 2.0 User And Group Provisioning
 
@@ -677,16 +734,18 @@ Remediation endpoints require `security_admin` or `iam_admin`.
 
 AccessIQ uses deterministic Python policy checks for access grants and revokes. It does not call AI, LLMs, or external policy services.
 
-API RBAC is not the business policy engine. A caller must first be authorized to call an endpoint, and then the policy engine evaluates whether the requested access change is allowed.
+API RBAC is not the business policy engine. A caller must first be authorized to call an endpoint or satisfy an active delegation assignment, and then the policy engine evaluates whether the requested access change is allowed.
 
 Grant policy rules:
 
 - Inactive target users cannot receive access.
 - The requester must be active.
-- Auditors and employees cannot grant access.
+- Auditors and employees cannot grant access unless they have an active matching delegation assignment.
 - Finance Portal access is restricted to users in the Finance department.
 - Administrator entitlements can only be granted by admin operators.
 - Help Desk users can grant standard, non-administrator entitlements.
+- Delegated helpdesk operators can grant or revoke standard scoped entitlements.
+- Delegated application owners and application administrators can grant or revoke scoped administrator entitlements.
 - Admin operators can grant standard and administrator entitlements.
 
 Grant and revoke request bodies identify only the target and entitlement:
@@ -700,7 +759,7 @@ Grant and revoke request bodies identify only the target and entitlement:
 
 The requester is always derived from the bearer token and cannot be supplied by the client.
 
-Successful grant/revoke attempts and business-policy denials are written to the audit log. API RBAC denials happen before the business policy engine and are not access-governance audit events. Audit events can be listed newest first by authorized callers:
+Successful grant/revoke attempts and business-policy denials are written to the audit log. Delegation assignment changes and delegated action allow/deny decisions are also audited. API RBAC denials happen before the business policy engine and are not access-governance audit events. Audit events can be listed newest first by authorized callers:
 
 ```bash
 curl http://localhost:8000/audit-events \

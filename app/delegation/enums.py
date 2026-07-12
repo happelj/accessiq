@@ -1,0 +1,21 @@
+from enum import StrEnum
+
+
+class DelegationRole(StrEnum):
+    APPLICATION_OWNER = "APPLICATION_OWNER"
+    APPLICATION_ADMINISTRATOR = "APPLICATION_ADMINISTRATOR"
+    GROUP_OWNER = "GROUP_OWNER"
+    GROUP_ADMINISTRATOR = "GROUP_ADMINISTRATOR"
+    ACCESS_REVIEWER = "ACCESS_REVIEWER"
+    HELPDESK_DELEGATE = "HELPDESK_DELEGATE"
+
+
+class DelegationScopeType(StrEnum):
+    APPLICATION = "APPLICATION"
+    GROUP = "GROUP"
+    ENTITLEMENT = "ENTITLEMENT"
+
+
+class DelegatedAction(StrEnum):
+    GRANT_ACCESS = "grant_access"
+    REVOKE_ACCESS = "revoke_access"

@@ -11,9 +11,13 @@ flowchart LR
     SCIM --> Auth["JWT Authentication"]
     REST --> Auth
     Auth --> RBAC["API RBAC"]
+    RBAC --> Delegation["Delegation Service"]
     RBAC --> Services["Service Layer"]
+    Delegation --> Policy["Business Policy Engine"]
+    Delegation --> Audit
+    Delegation --> Events
     Services --> Governance["Governance Services"]
-    Services --> Policy["Business Policy Engine"]
+    Services --> Policy
     Services --> Audit["Audit Logging"]
     Services --> Events["Domain Events"]
     Governance --> Audit
@@ -40,6 +44,7 @@ flowchart TD
     Validation["Protocol validation"]
     Service["Service layer"]
     Governance["Governance services"]
+    Delegation["Delegation service"]
     Policy["Policy engine"]
     Audit["Audit event"]
     Events["In-process domain events"]
@@ -53,6 +58,10 @@ flowchart TD
     Route --> Validation
     Validation --> Service
     Service --> Governance
+    Service --> Delegation
+    Delegation --> Policy
+    Delegation --> Audit
+    Delegation --> Events
     Service --> Policy
     Governance --> Remediation
     Service --> Audit
@@ -88,7 +97,32 @@ sequenceDiagram
 
 API RBAC uses the `operator_role` field on `User`. Protected endpoints call reusable FastAPI dependencies such as `require_roles("security_admin", "iam_admin")`.
 
-RBAC decides whether a caller may invoke an endpoint. It does not decide whether an access grant is appropriate. Business policy decisions are separate.
+RBAC decides whether a caller may invoke an endpoint or enter a delegated authorization path. It does not decide whether an access grant is appropriate. Delegation and business policy decisions are separate.
+
+## Delegation Service
+
+Delegated administration is isolated under `app/delegation`. It stores scoped authority in normalized `DelegationAssignment` records and evaluates whether a non-global operator can administer a specific application, group, or entitlement.
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant API
+    participant RBAC
+    participant Delegation as DelegationService
+    participant Policy as BusinessPolicy
+    participant Audit
+
+    Operator->>API: POST /access/grant
+    API->>RBAC: Validate JWT and operator role
+    RBAC-->>API: Authenticated user
+    API->>Delegation: authorize_access_action()
+    Delegation->>Audit: delegated_action_allowed/denied
+    Delegation-->>API: effective delegation
+    API->>Policy: evaluate grant/revoke policy
+    Policy-->>API: allow or deny
+```
+
+Global `security_admin` and `iam_admin` users continue through the existing authorization path. Scoped delegates must have an active, unexpired assignment matching the entitlement or its parent application. Delegation never skips the business policy engine.
 
 ## Business Policy Engine
 
@@ -122,6 +156,7 @@ Reusable services own mutation logic:
 - `CampaignService`: certification campaign lifecycle, item generation, summary counts, and governance audit events.
 - `ReviewService`: review item lookup, decision recording, decision updates, and decision audit events.
 - `RemediationService`: governance-driven remediation jobs, campaign validation, duplicate prevention, connector execution, and provisioning job linkage.
+- `DelegationService`: delegated administration assignments, scope validation, effective delegation lookup, delegated action authorization, and delegation audit/domain events.
 
 Services do not know FastAPI request objects. SCIM provisioning helpers translate protocol payloads and service errors into SCIM responses.
 
@@ -340,6 +375,7 @@ Current event families include:
 - certification campaign created/started/completed/cancelled
 - certification decision recorded/updated
 - remediation created/started/completed/failed
+- delegation assigned/removed and delegated access allowed/denied
 
 ## Future Connector Architecture
 

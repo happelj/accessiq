@@ -57,6 +57,10 @@ AuditAction = Literal[
     "remediation_started",
     "remediation_completed",
     "remediation_failed",
+    "delegation_assigned",
+    "delegation_removed",
+    "delegated_action_allowed",
+    "delegated_action_denied",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 

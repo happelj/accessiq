@@ -8,10 +8,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from .audit_service import create_audit_event
-from .auth import create_access_token, hash_password, verify_password
+from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
 from .connectors.routes import router as connector_router
+from .delegation.enums import DelegatedAction
+from .delegation.models import DelegationAssignment
+from .delegation.routes import router as delegation_router
+from .delegation.services import DelegationAuthorization, DelegationService
 from .governance.models import (
     CertificationCampaign,
     CertificationDecision,
@@ -34,7 +38,7 @@ from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .provisioning.routes import router as provisioning_router
 from .remediation.models import RemediationJob
 from .remediation.routes import router as remediation_router
-from .rbac import require_roles
+from .rbac import forbidden_exception, require_roles
 from .scim.errors import register_scim_exception_handlers
 from .scim.routes import router as scim_router
 from .schemas import (
@@ -206,6 +210,7 @@ def ensure_schema_compatibility() -> None:
             CertificationReviewItem.__table__,
             CertificationDecision.__table__,
             RemediationJob.__table__,
+            DelegationAssignment.__table__,
         ):
             if table.name not in table_names:
                 table.create(connection, checkfirst=True)
@@ -347,6 +352,50 @@ def access_assignment_to_response(
     )
 
 
+def _record_delegated_success(
+    delegation_service: DelegationService,
+    authorization: DelegationAuthorization,
+    *,
+    actor: User,
+    target_user: User,
+    entitlement: Entitlement,
+    action: DelegatedAction,
+) -> None:
+    if not authorization.delegated or authorization.assignment is None:
+        return
+
+    delegation_service.record_delegated_access_granted(
+        actor=actor,
+        target_user=target_user,
+        entitlement=entitlement,
+        action=action,
+        assignment=authorization.assignment,
+    )
+
+
+def _record_delegated_denial(
+    delegation_service: DelegationService,
+    authorization: DelegationAuthorization,
+    *,
+    actor: User,
+    target_user: User,
+    entitlement: Entitlement,
+    action: DelegatedAction,
+    reason: str,
+) -> None:
+    if not authorization.delegated or authorization.assignment is None:
+        return
+
+    delegation_service.record_delegated_access_denied(
+        actor=actor,
+        target_user=target_user,
+        entitlement=entitlement,
+        action=action,
+        reason=reason,
+        assignment=authorization.assignment,
+    )
+
+
 def audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
     return AuditEventResponse(
         id=event.id,
@@ -434,6 +483,13 @@ app = FastAPI(
                 "existing provisioning infrastructure."
             ),
         },
+        {
+            "name": "Delegation",
+            "description": (
+                "Scoped delegated administration assignments and lifecycle "
+                "operations."
+            ),
+        },
     ],
 )
 
@@ -443,6 +499,7 @@ app.include_router(connector_router)
 app.include_router(provisioning_router)
 app.include_router(governance_router)
 app.include_router(remediation_router)
+app.include_router(delegation_router)
 
 
 @app.middleware("http")
@@ -679,7 +736,7 @@ def list_user_access(
 )
 def grant_access(
     access_data: AccessActionRequest,
-    current_user: User = Depends(require_roles("security_admin", "iam_admin")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccessResponse:
     user = db.get(User, access_data.target_user_id)
@@ -703,6 +760,25 @@ def grant_access(
         )
 
     application_id = entitlement.application.id
+    delegation_service = DelegationService(db)
+    authorization = delegation_service.authorize_access_action(
+        actor=current_user,
+        target_user=user,
+        entitlement=entitlement,
+        action=DelegatedAction.GRANT_ACCESS,
+    )
+    if not authorization.allowed:
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
+        delegation_service.publish_pending_events()
+        raise forbidden_exception()
 
     existing_assignment = db.scalar(
         select(AccessAssignment).where(
@@ -713,6 +789,15 @@ def grant_access(
 
     if existing_assignment is not None:
         try:
+            _record_delegated_denial(
+                delegation_service,
+                authorization,
+                actor=current_user,
+                target_user=user,
+                entitlement=entitlement,
+                action=DelegatedAction.GRANT_ACCESS,
+                reason="User already has this access",
+            )
             create_audit_event(
                 db,
                 requester_id=current_user.id,
@@ -731,15 +816,30 @@ def grant_access(
                 detail="Database operation failed",
             ) from exc
 
+        delegation_service.publish_pending_events()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already has this access",
         )
 
-    policy_decision = evaluate_grant_policy(current_user, user, entitlement)
+    policy_decision = evaluate_grant_policy(
+        current_user,
+        user,
+        entitlement,
+        delegation_role=authorization.delegation_role,
+    )
 
     if not policy_decision.allowed:
         try:
+            _record_delegated_denial(
+                delegation_service,
+                authorization,
+                actor=current_user,
+                target_user=user,
+                entitlement=entitlement,
+                action=DelegatedAction.GRANT_ACCESS,
+                reason=policy_decision.reason,
+            )
             create_audit_event(
                 db,
                 requester_id=current_user.id,
@@ -758,6 +858,7 @@ def grant_access(
                 detail="Database operation failed",
             ) from exc
 
+        delegation_service.publish_pending_events()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=policy_decision.reason,
@@ -772,6 +873,14 @@ def grant_access(
         db.add(assignment)
         db.flush()
         assignment_id = assignment.id
+        _record_delegated_success(
+            delegation_service,
+            authorization,
+            actor=current_user,
+            target_user=user,
+            entitlement=entitlement,
+            action=DelegatedAction.GRANT_ACCESS,
+        )
         create_audit_event(
             db,
             requester_id=current_user.id,
@@ -789,6 +898,8 @@ def grant_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database operation failed",
         ) from exc
+
+    delegation_service.publish_pending_events()
 
     assignment = db.scalar(
         select(AccessAssignment)
@@ -821,7 +932,7 @@ def grant_access(
 )
 def revoke_access(
     access_data: AccessActionRequest,
-    current_user: User = Depends(require_roles("security_admin", "iam_admin")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RevokeAccessResponse:
     user = db.get(User, access_data.target_user_id)
@@ -845,6 +956,25 @@ def revoke_access(
         )
 
     application_id = entitlement.application.id
+    delegation_service = DelegationService(db)
+    authorization = delegation_service.authorize_access_action(
+        actor=current_user,
+        target_user=user,
+        entitlement=entitlement,
+        action=DelegatedAction.REVOKE_ACCESS,
+    )
+    if not authorization.allowed:
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database operation failed",
+            ) from exc
+
+        delegation_service.publish_pending_events()
+        raise forbidden_exception()
 
     assignment = db.scalar(
         select(AccessAssignment).where(
@@ -855,6 +985,15 @@ def revoke_access(
 
     if assignment is None:
         try:
+            _record_delegated_denial(
+                delegation_service,
+                authorization,
+                actor=current_user,
+                target_user=user,
+                entitlement=entitlement,
+                action=DelegatedAction.REVOKE_ACCESS,
+                reason="Access assignment not found",
+            )
             create_audit_event(
                 db,
                 requester_id=current_user.id,
@@ -873,15 +1012,30 @@ def revoke_access(
                 detail="Database operation failed",
             ) from exc
 
+        delegation_service.publish_pending_events()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Access assignment not found",
         )
 
-    policy_decision = evaluate_revoke_policy(current_user, user, entitlement)
+    policy_decision = evaluate_revoke_policy(
+        current_user,
+        user,
+        entitlement,
+        delegation_role=authorization.delegation_role,
+    )
 
     if not policy_decision.allowed:
         try:
+            _record_delegated_denial(
+                delegation_service,
+                authorization,
+                actor=current_user,
+                target_user=user,
+                entitlement=entitlement,
+                action=DelegatedAction.REVOKE_ACCESS,
+                reason=policy_decision.reason,
+            )
             create_audit_event(
                 db,
                 requester_id=current_user.id,
@@ -900,6 +1054,7 @@ def revoke_access(
                 detail="Database operation failed",
             ) from exc
 
+        delegation_service.publish_pending_events()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=policy_decision.reason,
@@ -907,6 +1062,14 @@ def revoke_access(
 
     try:
         db.delete(assignment)
+        _record_delegated_success(
+            delegation_service,
+            authorization,
+            actor=current_user,
+            target_user=user,
+            entitlement=entitlement,
+            action=DelegatedAction.REVOKE_ACCESS,
+        )
         create_audit_event(
             db,
             requester_id=current_user.id,
@@ -924,6 +1087,8 @@ def revoke_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database operation failed",
         ) from exc
+
+    delegation_service.publish_pending_events()
 
     return RevokeAccessResponse(
         status="revoked",
