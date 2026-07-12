@@ -41,6 +41,7 @@ docker compose up --build
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
 - [Access reviews and certification campaigns](docs/access_reviews.md)
+- [Remediation engine](docs/remediation.md)
 
 ## Authentication And API Authorization
 
@@ -150,6 +151,9 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /access-reviews/campaigns/{campaign_id}/items` | `security_admin`, `iam_admin`, `auditor` |
 | `GET /access-reviews/items/{item_id}` | `security_admin`, `iam_admin`, `auditor` |
 | `POST /access-reviews/items/{item_id}/decision` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /access-reviews/campaigns/{campaign_id}/remediate` | `security_admin`, `iam_admin` |
+| `GET /remediation/jobs` | `security_admin`, `iam_admin` |
+| `GET /remediation/jobs/{job_id}` | `security_admin`, `iam_admin` |
 
 ## SCIM 2.0 User And Group Provisioning
 
@@ -631,6 +635,43 @@ curl -X POST http://localhost:8000/access-reviews/items/1/decision \
 ```
 
 Summary endpoints expose pending item count, completed item count, approval count, revocation count, abstain count, and completion percentage. Revoke decisions are governance records only; a future remediation worker can consume them and invoke the provisioning engine.
+
+## Remediation Engine
+
+AccessIQ can remediate completed certification campaigns by turning `REVOKE` decisions into provisioning-backed remediation jobs.
+
+```text
+Access Review
+  -> CertificationDecision(REVOKE)
+  -> RemediationJob
+  -> ProvisioningOrchestrator
+  -> ProvisioningJob
+  -> ProvisioningHistory
+  -> AuditEvent
+  -> Domain events
+```
+
+The current remediation engine is synchronous and API-triggered. It does not add background workers, durable queues, notifications, approvals, or schedulers. Those can be layered on later because every remediation execution is stored as a normalized `RemediationJob` and linked to the provisioning job created by the existing orchestrator.
+
+Supported remediation types:
+
+- `REVOKE_ENTITLEMENT`
+- `REMOVE_GROUP_MEMBER`
+- `DISABLE_USER`
+
+Current access review items are entitlement-backed, so completed `REVOKE` decisions execute `revoke_entitlement` connector operations. Non-revocation decisions are skipped.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/access-reviews/campaigns/1/remediate \
+  -H "Authorization: Bearer <jwt>"
+
+curl "http://localhost:8000/remediation/jobs?campaign_id=1" \
+  -H "Authorization: Bearer <jwt>"
+```
+
+Remediation endpoints require `security_admin` or `iam_admin`.
 
 ## Policy Enforcement And Audit Logging
 

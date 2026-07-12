@@ -244,5 +244,44 @@ class CertificationDecisionUpdated(DomainEvent):
     decision: str
 
 
+@dataclass(frozen=True)
+class RemediationCreated(DomainEvent):
+    remediation_job_id: int
+    campaign_id: int
+    review_item_id: int
+    remediation_type: str
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class RemediationStarted(DomainEvent):
+    remediation_job_id: int
+    campaign_id: int
+    review_item_id: int
+    remediation_type: str
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class RemediationCompleted(DomainEvent):
+    remediation_job_id: int
+    campaign_id: int
+    review_item_id: int
+    remediation_type: str
+    status: str
+    provisioning_job_id: int | None
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class RemediationFailed(DomainEvent):
+    remediation_job_id: int
+    campaign_id: int
+    review_item_id: int
+    remediation_type: str
+    message: str
+    correlation_id: str
+
+
 def event_time() -> datetime:
     return datetime.now(UTC)

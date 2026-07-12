@@ -32,6 +32,8 @@ from .models import (
 )
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .provisioning.routes import router as provisioning_router
+from .remediation.models import RemediationJob
+from .remediation.routes import router as remediation_router
 from .rbac import require_roles
 from .scim.errors import register_scim_exception_handlers
 from .scim.routes import router as scim_router
@@ -203,6 +205,7 @@ def ensure_schema_compatibility() -> None:
             CertificationCampaign.__table__,
             CertificationReviewItem.__table__,
             CertificationDecision.__table__,
+            RemediationJob.__table__,
         ):
             if table.name not in table_names:
                 table.create(connection, checkfirst=True)
@@ -424,6 +427,13 @@ app = FastAPI(
                 "and certification decisions."
             ),
         },
+        {
+            "name": "Remediation",
+            "description": (
+                "Governance-driven remediation jobs executed through the "
+                "existing provisioning infrastructure."
+            ),
+        },
     ],
 )
 
@@ -432,6 +442,7 @@ app.include_router(scim_router)
 app.include_router(connector_router)
 app.include_router(provisioning_router)
 app.include_router(governance_router)
+app.include_router(remediation_router)
 
 
 @app.middleware("http")

@@ -19,7 +19,9 @@ flowchart LR
     Governance --> Audit
     Governance --> Events
     Governance --> DB
+    Governance --> Remediation["Remediation Engine"]
     Events --> Orchestrator["Provisioning Orchestrator"]
+    Remediation --> Orchestrator
     Orchestrator --> Jobs["Provisioning Jobs"]
     Orchestrator --> Registry["Connector Registry"]
     Registry --> Connectors["Connector Implementations"]
@@ -42,6 +44,7 @@ flowchart TD
     Audit["Audit event"]
     Events["In-process domain events"]
     Orchestrator["Provisioning orchestrator"]
+    Remediation["Remediation engine"]
     Jobs["Provisioning jobs and history"]
     Registry["Connector registry"]
     Connectors["Connector implementations"]
@@ -51,6 +54,7 @@ flowchart TD
     Validation --> Service
     Service --> Governance
     Service --> Policy
+    Governance --> Remediation
     Service --> Audit
     Service --> Events
     Events --> Orchestrator
@@ -117,6 +121,7 @@ Reusable services own mutation logic:
 - `ProvisioningJobService`: provisioning job lifecycle, immutable history, retry tracking, and query filtering.
 - `CampaignService`: certification campaign lifecycle, item generation, summary counts, and governance audit events.
 - `ReviewService`: review item lookup, decision recording, decision updates, and decision audit events.
+- `RemediationService`: governance-driven remediation jobs, campaign validation, duplicate prevention, connector execution, and provisioning job linkage.
 
 Services do not know FastAPI request objects. SCIM provisioning helpers translate protocol payloads and service errors into SCIM responses.
 
@@ -158,6 +163,33 @@ stateDiagram-v2
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
+
+## Remediation Engine
+
+Remediation is isolated under `app/remediation`. It consumes completed access review campaigns and turns `REVOKE` decisions into provisioning-backed jobs.
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant API
+    participant Remediation as RemediationService
+    participant Orchestrator as ProvisioningOrchestrator
+    participant Jobs as ProvisioningJobService
+    participant Connector
+
+    Admin->>API: POST /access-reviews/campaigns/{id}/remediate
+    API->>Remediation: execute_campaign()
+    Remediation->>Remediation: create RemediationJob
+    Remediation->>Orchestrator: execute revoke_entitlement
+    Orchestrator->>Jobs: create/start/complete ProvisioningJob
+    Orchestrator->>Connector: revoke_entitlement
+    Connector-->>Orchestrator: ConnectorResult
+    Orchestrator-->>Remediation: result
+    Remediation->>Remediation: link provisioning_job_id
+    API-->>Admin: remediation job summary
+```
+
+Remediation jobs have statuses `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, and `SKIPPED`. The current execution path is synchronous and API-triggered; a future scheduler can execute pending jobs asynchronously without changing access review or connector contracts.
 
 ## Connector Framework
 
@@ -307,6 +339,7 @@ Current event families include:
 - provisioning retry recorded
 - certification campaign created/started/completed/cancelled
 - certification decision recorded/updated
+- remediation created/started/completed/failed
 
 ## Future Connector Architecture
 

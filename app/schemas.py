@@ -53,6 +53,10 @@ AuditAction = Literal[
     "certification_review_revoked",
     "certification_review_abstained",
     "certification_decision_updated",
+    "remediation_created",
+    "remediation_started",
+    "remediation_completed",
+    "remediation_failed",
 ]
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
