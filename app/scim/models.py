@@ -18,7 +18,9 @@ from .schemas import (
 
 def build_service_provider_config() -> ServiceProviderConfig:
     return ServiceProviderConfig(
-        documentationUri="https://github.com/happelj/accessiq#scim-20-groups",
+        documentationUri=(
+            "https://github.com/happelj/accessiq#scim-20-user-and-group-provisioning"
+        ),
         patch=Capability(supported=True),
         bulk=BulkCapability(supported=False),
         filter=FilterCapability(supported=True, maxResults=100),
@@ -49,8 +51,8 @@ def build_resource_types() -> list[ResourceType]:
             name="User",
             endpoint="/Users",
             description=(
-                "User resource type metadata. User read and provisioning "
-                "operations are implemented."
+                "User resource type metadata. User read, provisioning, and "
+                "Enterprise User Extension operations are implemented."
             ),
             schema=SCIM_SCHEMA_USER,
             schemaExtensions=[
@@ -78,8 +80,8 @@ def build_user_schema() -> SchemaResource:
         id=SCIM_SCHEMA_USER,
         name="User",
         description=(
-            "Core SCIM User schema metadata. AccessIQ currently supports read "
-            "and provisioning operations for User resources."
+            "Core SCIM User schema metadata. AccessIQ supports read and "
+            "provisioning operations for User resources."
         ),
         attributes=[
             SchemaAttribute(
@@ -198,8 +200,8 @@ def build_enterprise_user_schema() -> SchemaResource:
         id=SCIM_SCHEMA_ENTERPRISE_USER,
         name="EnterpriseUser",
         description=(
-            "SCIM Enterprise User extension metadata. Enterprise extension "
-            "provisioning arrives in a future milestone."
+            "SCIM Enterprise User extension metadata. AccessIQ supports "
+            "normalized enterprise profile provisioning for User resources."
         ),
         attributes=[
             SchemaAttribute(

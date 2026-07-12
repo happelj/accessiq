@@ -11,30 +11,93 @@ from sqlalchemy.orm import Session
 
 from ..audit_service import create_audit_event
 from ..models import Application, Entitlement, User
+from ..services.enterprise_user_service import (
+    DuplicateEmployeeNumberError,
+    EnterpriseProfileChange,
+    EnterpriseProfileMutation,
+    EnterpriseUserService,
+    ManagerCycleError,
+    SelfManagerError,
+    UnknownManagerError,
+    UNSET,
+)
 from ..services.user_service import (
     DuplicateUserNameError,
     UserMutation,
     UserNotFoundError,
     UserService,
 )
-from .constants import SCIM_SCHEMA_USER
+from .constants import SCIM_SCHEMA_ENTERPRISE_USER, SCIM_SCHEMA_USER
 from .errors import ScimHTTPException, raise_scim_error
 from .users import build_user_location, user_to_scim_resource
 
 SCIM_PATCH_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
 SCIM_AUDIT_APPLICATION_SLUG = "scim-provisioning"
 SCIM_AUDIT_ENTITLEMENT_SLUG = "user-lifecycle"
+SCIM_ENTERPRISE_AUDIT_ENTITLEMENT_SLUG = "enterprise-user-extension"
 
 ACTION_CREATE = "scim_user_create"
 ACTION_UPDATE = "scim_user_update"
 ACTION_DEACTIVATE = "scim_user_deactivate"
 ACTION_FAILURE = "scim_user_provisioning_failure"
+ACTION_ENTERPRISE_PROFILE_CREATE = "scim_enterprise_profile_create"
+ACTION_ENTERPRISE_PROFILE_UPDATE = "scim_enterprise_profile_update"
+ACTION_ENTERPRISE_MANAGER_CHANGE = "scim_enterprise_manager_change"
+ACTION_ENTERPRISE_DEPARTMENT_CHANGE = "scim_enterprise_department_change"
+ACTION_ENTERPRISE_ORGANIZATION_CHANGE = "scim_enterprise_organization_change"
+ACTION_ENTERPRISE_COST_CENTER_CHANGE = "scim_enterprise_cost_center_change"
+ACTION_ENTERPRISE_DIVISION_CHANGE = "scim_enterprise_division_change"
+ACTION_ENTERPRISE_EMPLOYEE_NUMBER_CHANGE = "scim_enterprise_employee_number_change"
+ACTION_ENTERPRISE_FAILURE = "scim_enterprise_provisioning_failure"
 
 EMAIL_ADAPTER = TypeAdapter(EmailStr)
 PATCH_PATHS = {
     "username": "userName",
     "displayname": "displayName",
     "active": "active",
+}
+ENTERPRISE_PATCH_PATHS = {
+    "employeenumber": "employeeNumber",
+    "department": "department",
+    "division": "division",
+    "organization": "organization",
+    "costcenter": "costCenter",
+    "manager": "manager",
+    "manager.value": "manager",
+}
+ENTERPRISE_CHANGE_AUDIT = {
+    "profile_created": (
+        ACTION_ENTERPRISE_PROFILE_CREATE,
+        "Enterprise profile created",
+    ),
+    "profile_updated": (
+        ACTION_ENTERPRISE_PROFILE_UPDATE,
+        "Enterprise profile updated",
+    ),
+    "employeeNumber": (
+        ACTION_ENTERPRISE_EMPLOYEE_NUMBER_CHANGE,
+        "Employee number changed",
+    ),
+    "department": (
+        ACTION_ENTERPRISE_DEPARTMENT_CHANGE,
+        "Department changed",
+    ),
+    "division": (
+        ACTION_ENTERPRISE_DIVISION_CHANGE,
+        "Division changed",
+    ),
+    "organization": (
+        ACTION_ENTERPRISE_ORGANIZATION_CHANGE,
+        "Organization changed",
+    ),
+    "costCenter": (
+        ACTION_ENTERPRISE_COST_CENTER_CHANGE,
+        "Cost center changed",
+    ),
+    "manager": (
+        ACTION_ENTERPRISE_MANAGER_CHANGE,
+        "Manager changed",
+    ),
 }
 
 
@@ -43,6 +106,13 @@ class ScimUserPayload:
     user_name: str
     display_name: str
     active: bool
+    enterprise_profile: EnterpriseProfileMutation | None = None
+
+
+@dataclass(frozen=True)
+class ScimUserPatch:
+    user_mutation: UserMutation
+    enterprise_profile: EnterpriseProfileMutation | None = None
 
 
 @dataclass(frozen=True)
@@ -71,12 +141,17 @@ def create_scim_user(
         )
 
     service = UserService(db)
+    enterprise_service = EnterpriseUserService(db)
 
     try:
         user = service.create_user(
             user_name=user_data.user_name,
             display_name=user_data.display_name,
             active=user_data.active,
+        )
+        enterprise_changes = enterprise_service.create_enterprise_profile(
+            user,
+            user_data.enterprise_profile,
         )
         _record_provisioning_audit(
             db,
@@ -86,8 +161,15 @@ def create_scim_user(
             result="succeeded",
             reason="User created",
         )
+        _record_enterprise_audits(
+            db,
+            actor=actor,
+            target_user=user,
+            changes=enterprise_changes,
+        )
         db.commit()
         service.publish_pending_events()
+        enterprise_service.publish_pending_events()
         db.refresh(user)
     except DuplicateUserNameError as exc:
         db.rollback()
@@ -99,6 +181,19 @@ def create_scim_user(
             reason="Duplicate userName",
             status_code=status.HTTP_409_CONFLICT,
             scim_type="uniqueness",
+        )
+    except (
+        DuplicateEmployeeNumberError,
+        UnknownManagerError,
+        SelfManagerError,
+        ManagerCycleError,
+    ) as exc:
+        db.rollback()
+        _audit_enterprise_error_and_raise(
+            db,
+            actor=actor,
+            target_user=None,
+            exc=exc,
         )
     except (IntegrityError, SQLAlchemyError) as exc:
         db.rollback()
@@ -132,6 +227,7 @@ def replace_scim_user(
         )
 
     service = UserService(db)
+    enterprise_service = EnterpriseUserService(db)
 
     try:
         user = service.replace_user(
@@ -139,6 +235,10 @@ def replace_scim_user(
             user_name=user_data.user_name,
             display_name=user_data.display_name,
             active=user_data.active,
+        )
+        enterprise_changes = enterprise_service.replace_enterprise_profile(
+            user,
+            user_data.enterprise_profile,
         )
         _record_provisioning_audit(
             db,
@@ -148,7 +248,14 @@ def replace_scim_user(
             result="succeeded",
             reason=_successful_update_reason(user),
         )
+        _record_enterprise_audits(
+            db,
+            actor=actor,
+            target_user=user,
+            changes=enterprise_changes,
+        )
         db.commit()
+        enterprise_service.publish_pending_events()
         db.refresh(user)
     except UserNotFoundError:
         db.rollback()
@@ -170,6 +277,19 @@ def replace_scim_user(
             reason="Duplicate userName",
             status_code=status.HTTP_409_CONFLICT,
             scim_type="uniqueness",
+        )
+    except (
+        DuplicateEmployeeNumberError,
+        UnknownManagerError,
+        SelfManagerError,
+        ManagerCycleError,
+    ) as exc:
+        db.rollback()
+        _audit_enterprise_error_and_raise(
+            db,
+            actor=actor,
+            target_user=service.find_user(user_id),
+            exc=exc,
         )
     except (IntegrityError, SQLAlchemyError) as exc:
         db.rollback()
@@ -190,6 +310,7 @@ def patch_scim_user(
     base_url: str,
 ) -> ScimProvisioningResult:
     service = UserService(db)
+    enterprise_service = EnterpriseUserService(db)
 
     try:
         current_user = service.find_user(user_id)
@@ -197,7 +318,7 @@ def patch_scim_user(
             raise UserNotFoundError(user_id)
 
         try:
-            mutation = _parse_patch_payload(payload, current_user=current_user)
+            patch = _parse_patch_payload(payload, current_user=current_user)
         except ScimHTTPException as exc:
             _audit_scim_exception_and_raise(
                 db,
@@ -208,7 +329,11 @@ def patch_scim_user(
                 scim_type=exc.scim_type,
             )
 
-        user = service.patch_user(user_id, mutation)
+        user = service.patch_user(user_id, patch.user_mutation)
+        enterprise_changes = enterprise_service.patch_enterprise_profile(
+            user,
+            patch.enterprise_profile,
+        )
         _record_provisioning_audit(
             db,
             actor=actor,
@@ -217,7 +342,14 @@ def patch_scim_user(
             result="succeeded",
             reason=_successful_update_reason(user),
         )
+        _record_enterprise_audits(
+            db,
+            actor=actor,
+            target_user=user,
+            changes=enterprise_changes,
+        )
         db.commit()
+        enterprise_service.publish_pending_events()
         db.refresh(user)
     except UserNotFoundError:
         db.rollback()
@@ -240,6 +372,19 @@ def patch_scim_user(
             status_code=status.HTTP_409_CONFLICT,
             scim_type="uniqueness",
         )
+    except (
+        DuplicateEmployeeNumberError,
+        UnknownManagerError,
+        SelfManagerError,
+        ManagerCycleError,
+    ) as exc:
+        db.rollback()
+        _audit_enterprise_error_and_raise(
+            db,
+            actor=actor,
+            target_user=service.find_user(user_id),
+            exc=exc,
+        )
     except (IntegrityError, SQLAlchemyError) as exc:
         db.rollback()
         _raise_database_error(exc)
@@ -257,11 +402,15 @@ def _parse_user_payload(payload: Any, *, active_default: bool) -> ScimUserPayloa
     user_name = _parse_user_name(payload.get("userName"))
     display_name = _parse_display_name(payload)
     active = _parse_active(payload.get("active", active_default))
+    enterprise_profile = _parse_enterprise_profile_payload(
+        payload.get(SCIM_SCHEMA_ENTERPRISE_USER, UNSET)
+    )
 
     return ScimUserPayload(
         user_name=user_name,
         display_name=display_name,
         active=active,
+        enterprise_profile=enterprise_profile,
     )
 
 
@@ -269,7 +418,7 @@ def _parse_patch_payload(
     payload: Any,
     *,
     current_user: User,
-) -> UserMutation:
+) -> ScimUserPatch:
     if not isinstance(payload, dict):
         _raise_invalid_payload("SCIM PATCH payload must be a JSON object")
 
@@ -277,23 +426,23 @@ def _parse_patch_payload(
     if not isinstance(operations, list) or not operations:
         _raise_invalid_payload("SCIM PATCH requires a non-empty Operations array")
 
-    mutation = UserMutation()
+    patch = ScimUserPatch(user_mutation=UserMutation())
     for operation in operations:
-        mutation = _apply_patch_operation(
-            mutation,
+        patch = _apply_patch_operation(
+            patch,
             operation=operation,
             current_user=current_user,
         )
 
-    return mutation
+    return patch
 
 
 def _apply_patch_operation(
-    mutation: UserMutation,
+    patch: ScimUserPatch,
     *,
     operation: Any,
     current_user: User,
-) -> UserMutation:
+) -> ScimUserPatch:
     if not isinstance(operation, dict):
         _raise_invalid_payload("Each PATCH operation must be an object")
 
@@ -315,15 +464,15 @@ def _apply_patch_operation(
             _raise_invalid_payload("PATCH operation without path requires object value")
 
         for attribute, attribute_value in value.items():
-            mutation = _apply_attribute_patch(
-                mutation,
+            patch = _apply_attribute_patch(
+                patch,
                 op=op,
                 path=str(attribute),
                 value=attribute_value,
                 current_user=current_user,
             )
 
-        return mutation
+        return patch
 
     if not isinstance(raw_path, str):
         _raise_invalid_path("PATCH path must be a string")
@@ -333,7 +482,7 @@ def _apply_patch_operation(
         _raise_invalid_payload("PATCH add and replace operations require value")
 
     return _apply_attribute_patch(
-        mutation,
+        patch,
         op=op,
         path=raw_path,
         value=value,
@@ -342,42 +491,64 @@ def _apply_patch_operation(
 
 
 def _apply_attribute_patch(
-    mutation: UserMutation,
+    patch: ScimUserPatch,
     *,
     op: str,
     path: str,
     value: Any,
     current_user: User,
-) -> UserMutation:
+) -> ScimUserPatch:
+    enterprise_path = _normalize_enterprise_patch_path(path)
+    if enterprise_path is not None:
+        return _apply_enterprise_attribute_patch(
+            patch,
+            op=op,
+            path=enterprise_path,
+            value=value,
+        )
+
     normalized_path = PATCH_PATHS.get(path.lower())
     if normalized_path is None:
         _raise_invalid_path(f"Unsupported PATCH path: {path}")
 
     if op == "remove":
-        return _remove_attribute(
-            mutation,
-            path=normalized_path,
-            current_user=current_user,
+        return ScimUserPatch(
+            user_mutation=_remove_attribute(
+                patch.user_mutation,
+                path=normalized_path,
+                current_user=current_user,
+            ),
+            enterprise_profile=patch.enterprise_profile,
         )
 
+    mutation = patch.user_mutation
     if normalized_path == "userName":
-        return UserMutation(
-            user_name=_parse_user_name(value),
-            display_name=mutation.display_name,
-            active=mutation.active,
+        return ScimUserPatch(
+            user_mutation=UserMutation(
+                user_name=_parse_user_name(value),
+                display_name=mutation.display_name,
+                active=mutation.active,
+            ),
+            enterprise_profile=patch.enterprise_profile,
         )
 
     if normalized_path == "displayName":
-        return UserMutation(
-            user_name=mutation.user_name,
-            display_name=_parse_display_name_value(value),
-            active=mutation.active,
+        return ScimUserPatch(
+            user_mutation=UserMutation(
+                user_name=mutation.user_name,
+                display_name=_parse_display_name_value(value),
+                active=mutation.active,
+            ),
+            enterprise_profile=patch.enterprise_profile,
         )
 
-    return UserMutation(
-        user_name=mutation.user_name,
-        display_name=mutation.display_name,
-        active=_parse_active(value),
+    return ScimUserPatch(
+        user_mutation=UserMutation(
+            user_name=mutation.user_name,
+            display_name=mutation.display_name,
+            active=_parse_active(value),
+        ),
+        enterprise_profile=patch.enterprise_profile,
     )
 
 
@@ -402,6 +573,211 @@ def _remove_attribute(
         display_name=mutation.display_name,
         active=False,
     )
+
+
+def _apply_enterprise_attribute_patch(
+    patch: ScimUserPatch,
+    *,
+    op: str,
+    path: str,
+    value: Any,
+) -> ScimUserPatch:
+    if path == SCIM_SCHEMA_ENTERPRISE_USER:
+        if op == "remove":
+            return _merge_enterprise_mutation(patch, _clear_enterprise_mutation())
+
+        if not isinstance(value, dict):
+            _raise_invalid_payload("Enterprise User extension value must be an object")
+
+        return _merge_enterprise_mutation(
+            patch,
+            _parse_enterprise_profile_payload(value),
+        )
+
+    if op == "remove":
+        parsed_value: str | int | None = None
+    elif path == "manager":
+        parsed_value = _parse_manager_value(value)
+    else:
+        parsed_value = _parse_enterprise_string(value, path)
+
+    return _merge_enterprise_mutation(
+        patch,
+        _enterprise_mutation_for_path(path, parsed_value),
+    )
+
+
+def _normalize_enterprise_patch_path(path: str) -> str | None:
+    if path.lower() == SCIM_SCHEMA_ENTERPRISE_USER.lower():
+        return SCIM_SCHEMA_ENTERPRISE_USER
+
+    enterprise_prefix = f"{SCIM_SCHEMA_ENTERPRISE_USER}:"
+    if path.lower().startswith(enterprise_prefix.lower()):
+        path = path[len(enterprise_prefix):]
+
+    return ENTERPRISE_PATCH_PATHS.get(path.lower())
+
+
+def _merge_enterprise_mutation(
+    patch: ScimUserPatch,
+    mutation: EnterpriseProfileMutation | None,
+) -> ScimUserPatch:
+    if mutation is None:
+        return patch
+
+    current = patch.enterprise_profile or EnterpriseProfileMutation()
+    return ScimUserPatch(
+        user_mutation=patch.user_mutation,
+        enterprise_profile=EnterpriseProfileMutation(
+            employee_number=(
+                mutation.employee_number
+                if mutation.employee_number is not UNSET
+                else current.employee_number
+            ),
+            department=(
+                mutation.department
+                if mutation.department is not UNSET
+                else current.department
+            ),
+            division=(
+                mutation.division
+                if mutation.division is not UNSET
+                else current.division
+            ),
+            organization=(
+                mutation.organization
+                if mutation.organization is not UNSET
+                else current.organization
+            ),
+            cost_center=(
+                mutation.cost_center
+                if mutation.cost_center is not UNSET
+                else current.cost_center
+            ),
+            manager_id=(
+                mutation.manager_id
+                if mutation.manager_id is not UNSET
+                else current.manager_id
+            ),
+        ),
+    )
+
+
+def _enterprise_mutation_for_path(
+    path: str,
+    value: str | int | None,
+) -> EnterpriseProfileMutation:
+    if path == "employeeNumber":
+        return EnterpriseProfileMutation(employee_number=value)
+
+    if path == "department":
+        return EnterpriseProfileMutation(department=value)
+
+    if path == "division":
+        return EnterpriseProfileMutation(division=value)
+
+    if path == "organization":
+        return EnterpriseProfileMutation(organization=value)
+
+    if path == "costCenter":
+        return EnterpriseProfileMutation(cost_center=value)
+
+    if path == "manager":
+        return EnterpriseProfileMutation(manager_id=value)
+
+    _raise_invalid_path(f"Unsupported PATCH path: {path}")
+
+
+def _clear_enterprise_mutation() -> EnterpriseProfileMutation:
+    return EnterpriseProfileMutation(
+        employee_number=None,
+        department=None,
+        division=None,
+        organization=None,
+        cost_center=None,
+        manager_id=None,
+    )
+
+
+def _parse_enterprise_profile_payload(
+    payload: Any,
+) -> EnterpriseProfileMutation | None:
+    if payload is UNSET:
+        return None
+
+    if not isinstance(payload, dict):
+        _raise_invalid_payload("Enterprise User extension must be an object")
+
+    return EnterpriseProfileMutation(
+        employee_number=(
+            _parse_enterprise_string(payload["employeeNumber"], "employeeNumber")
+            if "employeeNumber" in payload
+            else UNSET
+        ),
+        department=(
+            _parse_enterprise_string(payload["department"], "department")
+            if "department" in payload
+            else UNSET
+        ),
+        division=(
+            _parse_enterprise_string(payload["division"], "division")
+            if "division" in payload
+            else UNSET
+        ),
+        organization=(
+            _parse_enterprise_string(payload["organization"], "organization")
+            if "organization" in payload
+            else UNSET
+        ),
+        cost_center=(
+            _parse_enterprise_string(payload["costCenter"], "costCenter")
+            if "costCenter" in payload
+            else UNSET
+        ),
+        manager_id=(
+            _parse_manager_value(payload["manager"])
+            if "manager" in payload
+            else UNSET
+        ),
+    )
+
+
+def _parse_enterprise_string(value: Any, attribute_name: str) -> str | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        _raise_invalid_payload(f"{attribute_name} must be a string or null")
+
+    parsed_value = value.strip()
+    if not parsed_value:
+        _raise_invalid_payload(f"{attribute_name} must not be empty")
+
+    if len(parsed_value) > 100:
+        _raise_invalid_payload(f"{attribute_name} must be 100 characters or fewer")
+
+    return parsed_value
+
+
+def _parse_manager_value(value: Any) -> int | None:
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        if "value" not in value:
+            _raise_invalid_payload("manager.value is required")
+
+        value = value["value"]
+
+    try:
+        manager_id = int(value)
+    except (TypeError, ValueError):
+        _raise_invalid_payload("manager.value must be a positive user id")
+
+    if manager_id < 1:
+        _raise_invalid_payload("manager.value must be a positive user id")
+
+    return manager_id
 
 
 def _parse_user_name(value: Any) -> str:
@@ -452,8 +828,9 @@ def _record_provisioning_audit(
     action: str,
     result: str,
     reason: str,
+    entitlement_slug: str = SCIM_AUDIT_ENTITLEMENT_SLUG,
 ) -> None:
-    entitlement = _get_scim_audit_entitlement(db)
+    entitlement = _get_scim_audit_entitlement(db, entitlement_slug=entitlement_slug)
     create_audit_event(
         db,
         requester_id=actor.id,
@@ -466,6 +843,61 @@ def _record_provisioning_audit(
     )
 
 
+def _record_enterprise_audits(
+    db: Session,
+    *,
+    actor: User,
+    target_user: User,
+    changes: list[EnterpriseProfileChange],
+) -> None:
+    for change in changes:
+        action, reason = ENTERPRISE_CHANGE_AUDIT[change.kind]
+        _record_provisioning_audit(
+            db,
+            actor=actor,
+            target_user=target_user,
+            action=action,
+            result="succeeded",
+            reason=reason,
+            entitlement_slug=SCIM_ENTERPRISE_AUDIT_ENTITLEMENT_SLUG,
+        )
+
+
+def _audit_enterprise_error_and_raise(
+    db: Session,
+    *,
+    actor: User,
+    target_user: User | None,
+    exc: Exception,
+) -> None:
+    status_code = status.HTTP_400_BAD_REQUEST
+    scim_type = "invalidValue"
+    reason = "Enterprise profile validation failed"
+
+    if isinstance(exc, DuplicateEmployeeNumberError):
+        status_code = status.HTTP_409_CONFLICT
+        scim_type = "uniqueness"
+        reason = "Duplicate employeeNumber"
+        target_user = exc.existing_profile.user
+    elif isinstance(exc, UnknownManagerError):
+        reason = "Unknown manager"
+    elif isinstance(exc, SelfManagerError):
+        reason = "Self manager is not allowed"
+    elif isinstance(exc, ManagerCycleError):
+        reason = "Manager cycle detected"
+
+    _audit_and_raise(
+        db,
+        actor=actor,
+        target_user=target_user,
+        action=ACTION_ENTERPRISE_FAILURE,
+        reason=reason,
+        status_code=status_code,
+        scim_type=scim_type,
+        entitlement_slug=SCIM_ENTERPRISE_AUDIT_ENTITLEMENT_SLUG,
+    )
+
+
 def _audit_and_raise(
     db: Session,
     *,
@@ -475,6 +907,7 @@ def _audit_and_raise(
     reason: str,
     status_code: int,
     scim_type: str | None = None,
+    entitlement_slug: str = SCIM_AUDIT_ENTITLEMENT_SLUG,
 ) -> None:
     try:
         _record_provisioning_audit(
@@ -484,6 +917,7 @@ def _audit_and_raise(
             action=action,
             result="denied",
             reason=reason,
+            entitlement_slug=entitlement_slug,
         )
         db.commit()
     except SQLAlchemyError as exc:
@@ -517,13 +951,17 @@ def _audit_scim_exception_and_raise(
     )
 
 
-def _get_scim_audit_entitlement(db: Session) -> Entitlement:
+def _get_scim_audit_entitlement(
+    db: Session,
+    *,
+    entitlement_slug: str,
+) -> Entitlement:
     entitlement = db.scalar(
         select(Entitlement)
         .join(Application)
         .where(
             Application.slug == SCIM_AUDIT_APPLICATION_SLUG,
-            Entitlement.slug == SCIM_AUDIT_ENTITLEMENT_SLUG,
+            Entitlement.slug == entitlement_slug,
         )
     )
     if entitlement is None:
