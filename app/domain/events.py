@@ -198,5 +198,51 @@ class ProvisioningRetryRecorded(DomainEvent):
     delay_ms: int
 
 
+@dataclass(frozen=True)
+class CertificationCampaignCreated(DomainEvent):
+    campaign_id: int
+    name: str
+
+
+@dataclass(frozen=True)
+class CertificationCampaignStarted(DomainEvent):
+    campaign_id: int
+    total_items: int
+
+
+@dataclass(frozen=True)
+class CertificationCampaignCompleted(DomainEvent):
+    campaign_id: int
+    approval_count: int
+    revocation_count: int
+    abstain_count: int
+
+
+@dataclass(frozen=True)
+class CertificationCampaignCancelled(DomainEvent):
+    campaign_id: int
+
+
+@dataclass(frozen=True)
+class CertificationDecisionRecorded(DomainEvent):
+    campaign_id: int
+    review_item_id: int
+    reviewer_id: int
+    user_id: int
+    entitlement_id: int
+    decision: str
+
+
+@dataclass(frozen=True)
+class CertificationDecisionUpdated(DomainEvent):
+    campaign_id: int
+    review_item_id: int
+    reviewer_id: int
+    user_id: int
+    entitlement_id: int
+    previous_decision: str | None
+    decision: str
+
+
 def event_time() -> datetime:
     return datetime.now(UTC)

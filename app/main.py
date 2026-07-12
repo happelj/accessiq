@@ -12,6 +12,12 @@ from .auth import create_access_token, hash_password, verify_password
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
 from .connectors.routes import router as connector_router
+from .governance.models import (
+    CertificationCampaign,
+    CertificationDecision,
+    CertificationReviewItem,
+)
+from .governance.routes import router as governance_router
 from .models import (
     AccessAssignment,
     Application,
@@ -98,6 +104,7 @@ SEEDED_APPLICATIONS = [
     {"name": "GitHub", "slug": "github"},
     {"name": "SCIM Provisioning", "slug": "scim-provisioning"},
     {"name": "Connector Framework", "slug": "connector-framework"},
+    {"name": "Governance", "slug": "governance"},
 ]
 
 SEEDED_ENTITLEMENTS = [
@@ -161,6 +168,11 @@ SEEDED_ENTITLEMENTS = [
         "name": "Connector Execution",
         "slug": "connector-execution",
     },
+    {
+        "application_slug": "governance",
+        "name": "Access Review Certification",
+        "slug": "access-review-certification",
+    },
 ]
 
 _database_initialization_lock = Lock()
@@ -188,6 +200,9 @@ def ensure_schema_compatibility() -> None:
             EnterpriseUserProfile.__table__,
             ProvisioningJob.__table__,
             ProvisioningHistory.__table__,
+            CertificationCampaign.__table__,
+            CertificationReviewItem.__table__,
+            CertificationDecision.__table__,
         ):
             if table.name not in table_names:
                 table.create(connection, checkfirst=True)
@@ -402,6 +417,13 @@ app = FastAPI(
                 "Provisioning job and immutable provisioning history inspection."
             ),
         },
+        {
+            "name": "Access Reviews",
+            "description": (
+                "Identity governance certification campaigns, review items, "
+                "and certification decisions."
+            ),
+        },
     ],
 )
 
@@ -409,6 +431,7 @@ register_scim_exception_handlers(app)
 app.include_router(scim_router)
 app.include_router(connector_router)
 app.include_router(provisioning_router)
+app.include_router(governance_router)
 
 
 @app.middleware("http")
