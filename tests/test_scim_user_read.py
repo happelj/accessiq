@@ -237,7 +237,7 @@ def test_active_eq_true_filter() -> None:
 def test_active_eq_false_filter() -> None:
     inactive_user = create_user(name="Inactive SCIM User", active=False)
 
-    response = get_scim_users({"filter": "active eq false"})
+    response = get_scim_users({"filter": "active eq false", "count": "1000"})
 
     assert response.status_code == 200
 

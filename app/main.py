@@ -16,6 +16,7 @@ from .models import (
     Application,
     AuditEvent,
     Entitlement,
+    EnterpriseUserProfile,
     Group,
     GroupMember,
     User,
@@ -145,6 +146,11 @@ SEEDED_ENTITLEMENTS = [
         "name": "SCIM Group Lifecycle",
         "slug": "group-lifecycle",
     },
+    {
+        "application_slug": "scim-provisioning",
+        "name": "SCIM Enterprise User Extension",
+        "slug": "enterprise-user-extension",
+    },
 ]
 
 _database_initialization_lock = Lock()
@@ -166,9 +172,39 @@ def ensure_schema_compatibility() -> None:
                 )
             )
 
-        for table in (Group.__table__, GroupMember.__table__):
+        for table in (
+            Group.__table__,
+            GroupMember.__table__,
+            EnterpriseUserProfile.__table__,
+        ):
             if table.name not in table_names:
                 table.create(connection, checkfirst=True)
+
+        if "enterprise_user_profiles" in table_names:
+            enterprise_columns = {
+                column["name"]
+                for column in inspector.get_columns("enterprise_user_profiles")
+            }
+            enterprise_column_definitions = {
+                "employee_number": "VARCHAR(100)",
+                "department": "VARCHAR(100)",
+                "division": "VARCHAR(100)",
+                "cost_center": "VARCHAR(100)",
+                "organization": "VARCHAR(100)",
+                "manager_id": "INTEGER",
+                "created_at": "DATETIME",
+                "updated_at": "DATETIME",
+            }
+            for column_name, column_type in enterprise_column_definitions.items():
+                if column_name in enterprise_columns:
+                    continue
+
+                connection.execute(
+                    text(
+                        "ALTER TABLE enterprise_user_profiles "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
 
         if "password_hash" not in user_columns:
             connection.execute(

@@ -320,13 +320,13 @@ def test_unsupported_patch_path() -> None:
         f"/scim/v2/Users/{created['id']}",
         headers=auth_headers("alice@example.com"),
         json=patch_payload(
-            {
-                "op": "replace",
-                "path": "department",
-                "value": "Finance",
-            }
-        ),
-    )
+                {
+                    "op": "replace",
+                    "path": "phoneNumbers",
+                    "value": "555-0100",
+                }
+            ),
+        )
 
     assert_scim_error(response, status_code=400, scim_type="invalidPath")
 

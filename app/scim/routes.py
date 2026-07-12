@@ -3,10 +3,10 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import User
+from ..models import EnterpriseUserProfile, User
 from ..rbac import require_roles
 from ..services.group_service import (
     GroupService,
@@ -16,6 +16,7 @@ from ..services.group_service import (
 from .constants import (
     SCIM_BASE_PATH,
     SCIM_MEDIA_TYPE,
+    SCIM_SCHEMA_ENTERPRISE_USER,
     SCIM_SCHEMA_GROUP,
     SCIM_SCHEMA_USER,
 )
@@ -56,8 +57,20 @@ class SCIMJSONResponse(JSONResponse):
 
 require_scim_admin = require_roles("security_admin", "iam_admin")
 
+SCIM_ENTERPRISE_USER_EXAMPLE = {
+    "employeeNumber": "E-1001",
+    "department": "Engineering",
+    "division": "Platform",
+    "organization": "AccessIQ",
+    "costCenter": "ENG-001",
+    "manager": {
+        "value": "6",
+        "$ref": "https://accessiq.example.com/scim/v2/Users/6",
+        "displayName": "Maya Patel",
+    },
+}
 SCIM_USER_EXAMPLE = {
-    "schemas": [SCIM_SCHEMA_USER],
+    "schemas": [SCIM_SCHEMA_USER, SCIM_SCHEMA_ENTERPRISE_USER],
     "id": "1",
     "userName": "alice@example.com",
     "name": {"formatted": "Alice Johnson"},
@@ -74,6 +87,7 @@ SCIM_USER_EXAMPLE = {
         "resourceType": "User",
         "location": "https://accessiq.example.com/scim/v2/Users/1",
     },
+    SCIM_SCHEMA_ENTERPRISE_USER: SCIM_ENTERPRISE_USER_EXAMPLE,
 }
 SCIM_USER_LIST_RESPONSES = {
     **SCIM_ERROR_RESPONSES,
@@ -128,6 +142,18 @@ SCIM_USER_REQUEST_EXAMPLE = {
     "displayName": "New User",
     "active": True,
 }
+SCIM_ENTERPRISE_USER_REQUEST_EXAMPLE = {
+    **SCIM_USER_REQUEST_EXAMPLE,
+    "schemas": [SCIM_SCHEMA_USER, SCIM_SCHEMA_ENTERPRISE_USER],
+    SCIM_SCHEMA_ENTERPRISE_USER: {
+        "employeeNumber": "E-2001",
+        "department": "Engineering",
+        "division": "Platform",
+        "organization": "AccessIQ",
+        "costCenter": "ENG-200",
+        "manager": {"value": "6"},
+    },
+}
 SCIM_PATCH_REQUEST_EXAMPLE = {
     "schemas": [SCIM_PATCH_SCHEMA],
     "Operations": [
@@ -152,6 +178,10 @@ SCIM_USER_REQUEST_BODY = {
                         **SCIM_USER_REQUEST_EXAMPLE,
                         "active": False,
                     },
+                },
+                "enterprise-user": {
+                    "summary": "Create user with Enterprise User Extension",
+                    "value": SCIM_ENTERPRISE_USER_REQUEST_EXAMPLE,
                 },
             }
         }
@@ -188,6 +218,34 @@ SCIM_PATCH_REQUEST_BODY = {
                                 "op": "add",
                                 "path": "userName",
                                 "value": "updated.user@example.com",
+                            }
+                        ],
+                    },
+                },
+                "replace-enterprise-department": {
+                    "summary": "Update enterprise department",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": (
+                                    f"{SCIM_SCHEMA_ENTERPRISE_USER}:department"
+                                ),
+                                "value": "Finance",
+                            }
+                        ],
+                    },
+                },
+                "replace-manager": {
+                    "summary": "Assign manager",
+                    "value": {
+                        "schemas": [SCIM_PATCH_SCHEMA],
+                        "Operations": [
+                            {
+                                "op": "replace",
+                                "path": "manager",
+                                "value": {"value": "6"},
                             }
                         ],
                     },
@@ -456,7 +514,9 @@ def list_users(
     )
 
     count_statement = select(func.count(User.id))
-    user_statement = select(User)
+    user_statement = select(User).options(
+        joinedload(User.enterprise_profile).joinedload(EnterpriseUserProfile.manager)
+    )
     if filter_expression is not None:
         count_statement = count_statement.where(filter_expression)
         user_statement = user_statement.where(filter_expression)
@@ -500,7 +560,9 @@ def list_users(
         "Creates an AccessIQ user from a SCIM 2.0 User payload. "
         "`userName` maps to the AccessIQ email, `displayName` maps to the "
         "AccessIQ display name, and `active` controls the active flag. "
-        "Provisioned users are assigned the default employee operator role."
+        "Provisioned users are assigned the default employee operator role. "
+        "The optional Enterprise User extension can provision employee, "
+        "department, organization, cost center, division, and manager data."
     ),
     openapi_extra={"requestBody": SCIM_USER_REQUEST_BODY},
 )
@@ -580,7 +642,8 @@ def get_user(
     summary="Replace a SCIM user",
     description=(
         "Performs SCIM full-replacement semantics for mutable User "
-        "attributes. The SCIM `id` and AccessIQ record identity are preserved."
+        "attributes, including the optional Enterprise User extension. The "
+        "SCIM `id` and AccessIQ record identity are preserved."
     ),
     openapi_extra={"requestBody": SCIM_USER_REQUEST_BODY},
 )
@@ -612,7 +675,9 @@ def replace_user(
     description=(
         "Applies SCIM PATCH operations to User attributes. Supports `add`, "
         "`replace`, and `remove` for `displayName`, `active`, and `userName` "
-        "where compatible with AccessIQ's required user fields."
+        "where compatible with AccessIQ's required user fields. Also supports "
+        "Enterprise User extension attributes including employeeNumber, "
+        "department, division, organization, costCenter, and manager."
     ),
     openapi_extra={"requestBody": SCIM_PATCH_REQUEST_BODY},
 )
@@ -886,8 +951,8 @@ def patch_group(
     summary="List SCIM schemas",
     description=(
         "Returns metadata for the core User schema, core Group schema, and "
-        "Enterprise User extension. Enterprise extensions arrive in a future "
-        "milestone."
+        "Enterprise User extension. AccessIQ supports Enterprise User "
+        "Extension provisioning on SCIM User create, replace, patch, and read."
     ),
 )
 def list_schemas() -> ScimListResponse:

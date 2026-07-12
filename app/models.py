@@ -43,6 +43,16 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    enterprise_profile: Mapped[EnterpriseUserProfile | None] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="EnterpriseUserProfile.user_id",
+        uselist=False,
+    )
+    managed_enterprise_profiles: Mapped[list[EnterpriseUserProfile]] = relationship(
+        back_populates="manager",
+        foreign_keys="EnterpriseUserProfile.manager_id",
+    )
 
 
 class Group(Base):
@@ -100,6 +110,58 @@ class GroupMember(Base):
     )
     group: Mapped[Group] = relationship(back_populates="memberships")
     user: Mapped[User] = relationship(back_populates="group_memberships")
+
+
+class EnterpriseUserProfile(Base):
+    __tablename__ = "enterprise_user_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            name="uq_enterprise_user_profiles_user_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    employee_number: Mapped[str | None] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+        nullable=True,
+    )
+    department: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    division: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cost_center: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    organization: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    manager_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(
+        back_populates="enterprise_profile",
+        foreign_keys=[user_id],
+    )
+    manager: Mapped[User | None] = relationship(
+        back_populates="managed_enterprise_profiles",
+        foreign_keys=[manager_id],
+    )
 
 
 class Application(Base):
