@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -257,6 +266,11 @@ class AuditEvent(Base):
     )
     result: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    correlation_id: Mapped[str | None] = mapped_column(
+        String(100),
+        index=True,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -274,3 +288,79 @@ class AuditEvent(Base):
     )
     application: Mapped[Application] = relationship()
     entitlement: Mapped[Entitlement] = relationship()
+
+
+class ProvisioningJob(Base):
+    __tablename__ = "provisioning_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    correlation_id: Mapped[str] = mapped_column(
+        String(100),
+        index=True,
+        nullable=False,
+    )
+    connector: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    operation: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    target_id: Mapped[str | None] = mapped_column(
+        String(100),
+        index=True,
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        index=True,
+        nullable=False,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    history_entries: Mapped[list[ProvisioningHistory]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProvisioningHistory(Base):
+    __tablename__ = "provisioning_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("provisioning_jobs.id"),
+        index=True,
+        nullable=False,
+    )
+    correlation_id: Mapped[str] = mapped_column(
+        String(100),
+        index=True,
+        nullable=False,
+    )
+    connector: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    operation: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        index=True,
+        nullable=False,
+    )
+    job: Mapped[ProvisioningJob] = relationship(back_populates="history_entries")

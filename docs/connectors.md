@@ -10,19 +10,23 @@ flowchart TD
     Orchestrator["ProvisioningOrchestrator"]
     Retry["RetryPolicy"]
     Registry["ConnectorRegistry"]
+    Jobs["ProvisioningJobService"]
     Interface["IdentityConnector"]
     Mock["Mock connector implementation"]
     Result["ConnectorResult"]
+    History["ProvisioningHistory"]
     Audit["Audit event"]
     Events["Domain events"]
 
     Source --> Orchestrator
     Orchestrator --> Retry
+    Orchestrator --> Jobs
     Orchestrator --> Registry
     Registry --> Interface
     Interface --> Mock
     Mock --> Result
     Result --> Orchestrator
+    Orchestrator --> History
     Orchestrator --> Audit
     Orchestrator --> Events
 ```
@@ -44,22 +48,25 @@ sequenceDiagram
     participant Caller
     participant Orchestrator
     participant Registry
+    participant Jobs
     participant Connector
     participant Audit
     participant Events
 
     Caller->>Orchestrator: execute(connector, operation, payload)
+    Orchestrator->>Jobs: create_job(correlation_id)
     Orchestrator->>Registry: get(connector)
     Registry-->>Orchestrator: IdentityConnector
     Orchestrator->>Events: ProvisioningStarted, ConnectorCalled
     Orchestrator->>Connector: operation(payload)
     Connector-->>Orchestrator: ConnectorResult or ConnectorError
+    Orchestrator->>Jobs: complete_job/fail_job/record_retry
     Orchestrator->>Audit: connector audit events
     Orchestrator->>Events: ConnectorSucceeded or ConnectorFailed
     Orchestrator-->>Caller: ConnectorResult
 ```
 
-The orchestrator is synchronous. It does not enqueue work, sleep, or start background workers. Future durable workers can subscribe to domain events and call the same orchestrator.
+The orchestrator is synchronous. It does not enqueue work, sleep, or start background workers. When a database session is supplied, it persists provisioning jobs and immutable history. Future durable workers can subscribe to domain events and call the same orchestrator.
 
 ## Connector Interface
 
@@ -196,6 +203,8 @@ Audit actions:
 
 The orchestrator records audit events when a database session, requester ID, and target user ID are supplied.
 
+Connector audit events include `correlation_id` when available, allowing audit rows to be tied back to `ProvisioningJob`, `ProvisioningHistory`, connector result data, and domain events.
+
 ## Domain Events
 
 Connector execution publishes in-process events:
@@ -207,6 +216,11 @@ Connector execution publishes in-process events:
 - `ConnectorSucceeded`
 - `ConnectorFailed`
 - `ConnectorRetryScheduled`
+- `ProvisioningJobCreated`
+- `ProvisioningJobStarted`
+- `ProvisioningJobCompleted`
+- `ProvisioningJobFailed`
+- `ProvisioningRetryRecorded`
 
 Events are not persisted. Future background workers can subscribe to these events without changing connector implementations.
 

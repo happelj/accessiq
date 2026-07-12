@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -344,6 +345,7 @@ def test_orchestrator_non_retryable_failure() -> None:
 
 
 def test_orchestrator_audit_integration() -> None:
+    correlation_id = f"corr-audit-{uuid4()}"
     requester = find_user_by_email("alice@example.com")
     target = find_user_by_email("bob@example.com")
     registry = ConnectorRegistry([SalesforceConnector()])
@@ -357,7 +359,7 @@ def test_orchestrator_audit_integration() -> None:
                 "user_id": str(target["id"]),
                 "entitlement": {"slug": "user"},
             },
-            correlation_id="corr-audit",
+            correlation_id=correlation_id,
             db=db,
             requester_id=requester["id"],
             target_user_id=target["id"],

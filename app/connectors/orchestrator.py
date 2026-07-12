@@ -22,6 +22,11 @@ from ..domain.events import (
 )
 from ..domain.publisher import publish_domain_events
 from ..models import Application, Entitlement
+from ..services.provisioning_job_service import (
+    ProvisioningHistoryEventType,
+    ProvisioningJobService,
+    ProvisioningJobStatus,
+)
 from .base import IdentityConnector
 from .exceptions import ConnectorError, ValidationError
 from .registry import ConnectorRegistry
@@ -36,6 +41,10 @@ ACTION_CONNECTOR_SUCCESS = "connector_success"
 ACTION_CONNECTOR_FAILURE = "connector_failure"
 ACTION_CONNECTOR_RETRY_SCHEDULED = "connector_retry_scheduled"
 ACTION_PROVISIONING_COMPLETED = "connector_provisioning_completed"
+ACTION_PROVISIONING_JOB_CREATED = "provisioning_job_created"
+ACTION_PROVISIONING_JOB_COMPLETED = "provisioning_job_completed"
+ACTION_PROVISIONING_JOB_FAILED = "provisioning_job_failed"
+ACTION_PROVISIONING_RETRY_RECORDED = "provisioning_retry_recorded"
 
 
 class ProvisioningOrchestrator:
@@ -63,6 +72,29 @@ class ProvisioningOrchestrator:
         resolved_correlation_id = correlation_id or str(uuid4())
         connector = self.registry.get(connector_name)
         operation_payload = dict(payload or {})
+        job_service = ProvisioningJobService(db) if db is not None else None
+        job = None
+        if job_service is not None:
+            job = job_service.create_job(
+                correlation_id=resolved_correlation_id,
+                connector=connector.name,
+                operation=resolved_operation.value,
+                target_type=_infer_target_type(resolved_operation),
+                target_id=_infer_target_id(resolved_operation, operation_payload),
+                max_attempts=self.retry_policy.max_attempts,
+            )
+            self._record_audit(
+                db,
+                requester_id=requester_id,
+                target_user_id=target_user_id,
+                action=ACTION_PROVISIONING_JOB_CREATED,
+                result="succeeded",
+                reason=(
+                    f"Provisioning job {job.id} created for "
+                    f"{connector.name} {resolved_operation.value}"
+                ),
+                correlation_id=resolved_correlation_id,
+            )
         events: list[DomainEvent] = [
             ProvisioningStarted(
                 occurred_at=event_time(),
@@ -75,6 +107,18 @@ class ProvisioningOrchestrator:
         started_at = perf_counter()
 
         while True:
+            if job_service is not None and job is not None:
+                job_service.start_job(job, attempt=attempt)
+                job_service.record_history(
+                    job,
+                    event_type=ProvisioningHistoryEventType.CONNECTOR_INVOCATION,
+                    status=ProvisioningJobStatus.RUNNING.value,
+                    message=(
+                        f"Connector {connector.name} called for "
+                        f"{resolved_operation.value}"
+                    ),
+                    attempt=attempt,
+                )
             events.append(
                 ConnectorCalled(
                     occurred_at=event_time(),
@@ -94,6 +138,7 @@ class ProvisioningOrchestrator:
                     f"Connector {connector.name} called for "
                     f"{resolved_operation.value}"
                 ),
+                correlation_id=resolved_correlation_id,
             )
 
             try:
@@ -107,6 +152,14 @@ class ProvisioningOrchestrator:
                 decision = self.retry_policy.decision(exc, attempt=attempt)
 
                 if decision.should_retry:
+                    if job_service is not None and job is not None:
+                        job_service.record_retry(
+                            job,
+                            attempt=attempt,
+                            next_attempt=decision.next_attempt or attempt + 1,
+                            delay_ms=decision.delay_ms,
+                            reason=decision.reason,
+                        )
                     events.append(
                         ConnectorRetryScheduled(
                             occurred_at=event_time(),
@@ -129,6 +182,19 @@ class ProvisioningOrchestrator:
                             f"Retry scheduled for {connector.name} "
                             f"{resolved_operation.value}: {decision.reason}"
                         ),
+                        correlation_id=resolved_correlation_id,
+                    )
+                    self._record_audit(
+                        db,
+                        requester_id=requester_id,
+                        target_user_id=target_user_id,
+                        action=ACTION_PROVISIONING_RETRY_RECORDED,
+                        result="succeeded",
+                        reason=(
+                            f"Retry recorded for {connector.name} "
+                            f"{resolved_operation.value}: {decision.reason}"
+                        ),
+                        correlation_id=resolved_correlation_id,
                     )
                     attempt += 1
                     continue
@@ -168,10 +234,44 @@ class ProvisioningOrchestrator:
                     action=ACTION_CONNECTOR_FAILURE,
                     result="denied",
                     reason=result.message,
+                    correlation_id=resolved_correlation_id,
                 )
+                if job_service is not None and job is not None:
+                    job_service.fail_job(
+                        job,
+                        status=result.status.value,
+                        message=result.message,
+                        attempt=attempt,
+                        duration_ms=result.duration_ms,
+                        retryable=result.retryable,
+                        details=result.details,
+                    )
+                    self._record_audit(
+                        db,
+                        requester_id=requester_id,
+                        target_user_id=target_user_id,
+                        action=ACTION_PROVISIONING_JOB_FAILED,
+                        result="denied",
+                        reason=(
+                            f"Provisioning job {job.id} failed: "
+                            f"{result.message}"
+                        ),
+                        correlation_id=resolved_correlation_id,
+                    )
+                    job_service.publish_pending_events()
                 publish_domain_events(events)
                 return result
 
+            if job_service is not None and job is not None:
+                job_service.complete_job(
+                    job,
+                    status=result.status.value,
+                    message=result.message,
+                    attempt=attempt,
+                    duration_ms=result.duration_ms,
+                    retryable=result.retryable,
+                    details=result.details,
+                )
             events.extend(
                 [
                     ConnectorSucceeded(
@@ -198,6 +298,7 @@ class ProvisioningOrchestrator:
                 action=ACTION_CONNECTOR_SUCCESS,
                 result="succeeded",
                 reason=result.message,
+                correlation_id=resolved_correlation_id,
             )
             self._record_audit(
                 db,
@@ -209,7 +310,22 @@ class ProvisioningOrchestrator:
                     f"Provisioning completed for {connector.name} "
                     f"{resolved_operation.value}"
                 ),
+                correlation_id=resolved_correlation_id,
             )
+            if job_service is not None and job is not None:
+                self._record_audit(
+                    db,
+                    requester_id=requester_id,
+                    target_user_id=target_user_id,
+                    action=ACTION_PROVISIONING_JOB_COMPLETED,
+                    result="succeeded",
+                    reason=(
+                        f"Provisioning job {job.id} completed for "
+                        f"{connector.name} {resolved_operation.value}"
+                    ),
+                    correlation_id=resolved_correlation_id,
+                )
+                job_service.publish_pending_events()
             publish_domain_events(events)
             return result
 
@@ -312,6 +428,7 @@ class ProvisioningOrchestrator:
         action: str,
         result: str,
         reason: str,
+        correlation_id: str,
     ) -> None:
         if db is None or requester_id is None or target_user_id is None:
             return
@@ -326,6 +443,7 @@ class ProvisioningOrchestrator:
             entitlement_id=entitlement.id,
             result=result,
             reason=reason,
+            correlation_id=correlation_id,
         )
 
 
@@ -346,6 +464,66 @@ def _require_mapping(
         raise ValidationError(f"Provisioning payload requires object {key}")
 
     return value
+
+
+def _infer_target_type(operation: ConnectorOperation) -> str:
+    if operation in {
+        ConnectorOperation.CREATE_USER,
+        ConnectorOperation.UPDATE_USER,
+        ConnectorOperation.DISABLE_USER,
+        ConnectorOperation.DELETE_USER,
+    }:
+        return "user"
+    if operation in {
+        ConnectorOperation.CREATE_GROUP,
+        ConnectorOperation.UPDATE_GROUP,
+        ConnectorOperation.DELETE_GROUP,
+        ConnectorOperation.ADD_GROUP_MEMBER,
+        ConnectorOperation.REMOVE_GROUP_MEMBER,
+    }:
+        return "group"
+    if operation in {
+        ConnectorOperation.GRANT_ENTITLEMENT,
+        ConnectorOperation.REVOKE_ENTITLEMENT,
+    }:
+        return "entitlement"
+
+    return "connector"
+
+
+def _infer_target_id(
+    operation: ConnectorOperation,
+    payload: Mapping[str, Any],
+) -> str | None:
+    if operation == ConnectorOperation.CREATE_USER:
+        return _optional_payload_value(payload, "email")
+    if operation == ConnectorOperation.CREATE_GROUP:
+        return _optional_payload_value(payload, "display_name")
+    if operation in {
+        ConnectorOperation.UPDATE_USER,
+        ConnectorOperation.DISABLE_USER,
+        ConnectorOperation.DELETE_USER,
+        ConnectorOperation.GRANT_ENTITLEMENT,
+        ConnectorOperation.REVOKE_ENTITLEMENT,
+    }:
+        return _optional_payload_value(payload, "user_id")
+    if operation in {
+        ConnectorOperation.UPDATE_GROUP,
+        ConnectorOperation.DELETE_GROUP,
+        ConnectorOperation.ADD_GROUP_MEMBER,
+        ConnectorOperation.REMOVE_GROUP_MEMBER,
+    }:
+        return _optional_payload_value(payload, "group_id")
+
+    return None
+
+
+def _optional_payload_value(payload: Mapping[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None or str(value).strip() == "":
+        return None
+
+    return str(value)
 
 
 def _get_connector_audit_entitlement(db: Session) -> Entitlement:

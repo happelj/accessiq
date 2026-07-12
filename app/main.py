@@ -20,9 +20,12 @@ from .models import (
     EnterpriseUserProfile,
     Group,
     GroupMember,
+    ProvisioningHistory,
+    ProvisioningJob,
     User,
 )
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
+from .provisioning.routes import router as provisioning_router
 from .rbac import require_roles
 from .scim.errors import register_scim_exception_handlers
 from .scim.routes import router as scim_router
@@ -183,9 +186,24 @@ def ensure_schema_compatibility() -> None:
             Group.__table__,
             GroupMember.__table__,
             EnterpriseUserProfile.__table__,
+            ProvisioningJob.__table__,
+            ProvisioningHistory.__table__,
         ):
             if table.name not in table_names:
                 table.create(connection, checkfirst=True)
+
+        if "audit_events" in table_names:
+            audit_columns = {
+                column["name"]
+                for column in inspector.get_columns("audit_events")
+            }
+            if "correlation_id" not in audit_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE audit_events "
+                        "ADD COLUMN correlation_id VARCHAR(100)"
+                    )
+                )
 
         if "enterprise_user_profiles" in table_names:
             enterprise_columns = {
@@ -323,6 +341,7 @@ def audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
         entitlement=event.entitlement.name,
         result=event.result,
         reason=event.reason,
+        correlation_id=event.correlation_id,
         created_at=event.created_at,
     )
 
@@ -377,12 +396,19 @@ app = FastAPI(
                 "Provisioning connector metadata and deterministic health checks."
             ),
         },
+        {
+            "name": "Provisioning",
+            "description": (
+                "Provisioning job and immutable provisioning history inspection."
+            ),
+        },
     ],
 )
 
 register_scim_exception_handlers(app)
 app.include_router(scim_router)
 app.include_router(connector_router)
+app.include_router(provisioning_router)
 
 
 @app.middleware("http")
@@ -888,6 +914,7 @@ def list_audit_events(
     target_user_id: int | None = None,
     result: AuditResult | None = None,
     action: AuditAction | None = None,
+    correlation_id: str | None = None,
     current_user: User = Depends(
         require_roles("security_admin", "iam_admin", "auditor")
     ),
@@ -911,6 +938,9 @@ def list_audit_events(
 
     if action is not None:
         statement = statement.where(AuditEvent.action == action)
+
+    if correlation_id is not None:
+        statement = statement.where(AuditEvent.correlation_id == correlation_id)
 
     events = db.scalars(
         statement.order_by(

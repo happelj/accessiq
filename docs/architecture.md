@@ -16,8 +16,10 @@ flowchart LR
     Services --> Audit["Audit Logging"]
     Services --> Events["Domain Events"]
     Events --> Orchestrator["Provisioning Orchestrator"]
+    Orchestrator --> Jobs["Provisioning Jobs"]
     Orchestrator --> Registry["Connector Registry"]
     Registry --> Connectors["Connector Implementations"]
+    Jobs --> DB
     Audit --> DB["Database"]
     Services --> DB
 ```
@@ -35,6 +37,7 @@ flowchart TD
     Audit["Audit event"]
     Events["In-process domain events"]
     Orchestrator["Provisioning orchestrator"]
+    Jobs["Provisioning jobs and history"]
     Registry["Connector registry"]
     Connectors["Connector implementations"]
     Database["SQLAlchemy models"]
@@ -45,6 +48,7 @@ flowchart TD
     Service --> Audit
     Service --> Events
     Events --> Orchestrator
+    Orchestrator --> Jobs
     Orchestrator --> Registry
     Registry --> Connectors
     Audit --> Database
@@ -104,6 +108,7 @@ Reusable services own mutation logic:
 - `UserService`: user creation, replacement, patching, deactivation, duplicate userName checks.
 - `GroupService`: group creation, replacement, patching, membership validation.
 - `EnterpriseUserService`: enterprise profile mutation, employeeNumber uniqueness, manager validation, cycle prevention.
+- `ProvisioningJobService`: provisioning job lifecycle, immutable history, retry tracking, and query filtering.
 
 Services do not know FastAPI request objects. SCIM provisioning helpers translate protocol payloads and service errors into SCIM responses.
 
@@ -116,6 +121,7 @@ flowchart TD
     Request["Domain event or service request"]
     Orchestrator["ProvisioningOrchestrator"]
     Retry["RetryPolicy"]
+    Jobs["ProvisioningJobService"]
     Registry["ConnectorRegistry"]
     Connector["IdentityConnector"]
     Result["ConnectorResult"]
@@ -124,6 +130,7 @@ flowchart TD
 
     Request --> Orchestrator
     Orchestrator --> Retry
+    Orchestrator --> Jobs
     Orchestrator --> Registry
     Registry --> Connector
     Connector --> Result
@@ -140,6 +147,33 @@ Current mock connector implementations are deterministic:
 - Finance
 
 They implement user lifecycle, group lifecycle, group membership, entitlement grant/revoke, and health check operations. Simulation modes cover success, validation failure, timeout, rate limiting, retryable failure, non-retryable failure, degraded health, and unavailable health.
+
+## Provisioning Job Engine
+
+The provisioning job engine persists connector execution state without introducing asynchronous processing.
+
+```mermaid
+sequenceDiagram
+    participant Orchestrator
+    participant Jobs as ProvisioningJobService
+    participant Connector
+    participant History as ProvisioningHistory
+    participant Audit
+    participant Events
+
+    Orchestrator->>Jobs: create_job(correlation_id)
+    Jobs->>History: job_created
+    Orchestrator->>Jobs: start_job(attempt)
+    Jobs->>History: job_started
+    Orchestrator->>Connector: execute operation
+    Connector-->>Orchestrator: ConnectorResult or exception
+    Orchestrator->>Jobs: complete_job/fail_job/record_retry
+    Jobs->>History: immutable event entries
+    Orchestrator->>Audit: correlation-aware audit events
+    Jobs->>Events: job lifecycle domain events
+```
+
+`ProvisioningJob` is the current state record. `ProvisioningHistory` is append-only operational history. `AuditEvent.correlation_id` links job tracking to audit inspection.
 
 ## SCIM Architecture
 
@@ -222,6 +256,8 @@ Current event families include:
 - connector called/succeeded/failed
 - connector retry scheduled
 - provisioning started/completed/failed
+- provisioning job created/started/completed/failed
+- provisioning retry recorded
 
 ## Future Connector Architecture
 
@@ -232,6 +268,7 @@ flowchart LR
     Events["Domain events"] --> Queue["Future durable queue"]
     Queue --> Worker["Connector worker"]
     Worker --> Orchestrator["ProvisioningOrchestrator"]
+    Orchestrator --> Jobs["ProvisioningJobService"]
     Orchestrator --> Registry["ConnectorRegistry"]
     Registry --> Connector["Real connector"]
     Connector --> SaaS["Downstream SaaS APIs"]
