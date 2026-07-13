@@ -44,6 +44,7 @@ docker compose up --build
 - [Remediation engine](docs/remediation.md)
 - [Delegated administration](docs/delegation.md)
 - [Authorization graph](docs/graph.md)
+- [AI context assembly](docs/ai.md)
 - [Architecture decision records](docs/adr)
 
 ## Authentication And API Authorization
@@ -111,6 +112,31 @@ Graph endpoints require `security_admin`, `iam_admin`, or `auditor`:
 - `POST /graph/cache/invalidate`
 
 Future AI explanation features can consume the graph and evidence collections, but Milestone 11A remains fully deterministic.
+
+## AI Context Assembly
+
+AccessIQ includes a deterministic AI preparation layer under `app/ai`. It classifies user questions, queries the authorization graph, collects and deduplicates evidence, applies heuristic ranking, enforces an approximate token budget, and builds a structured prompt object for a future LLM provider.
+
+This layer does not call OpenAI, Anthropic, embeddings, pgvector, semantic search, or any external AI service. It does not make authorization, provisioning, remediation, governance, or policy decisions.
+
+```text
+User Question
+  -> Intent Classifier
+  -> Authorization Graph Query Engine
+  -> Evidence Collection
+  -> Evidence Ranking
+  -> Token Budget
+  -> Context Assembly
+  -> Prompt Builder
+```
+
+AI context endpoints require `security_admin`, `iam_admin`, or `auditor`:
+
+- `POST /ai/context`
+- `POST /ai/evidence`
+- `POST /ai/prompt`
+
+The prompt response is a JSON object containing system instructions, the original user question, assembled evidence, citations, constraints, and future-provider-ready messages. A future LLM integration can consume this prompt object, but AccessIQ's deterministic services remain authoritative.
 
 ### Login Example
 
@@ -206,6 +232,9 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /graph/cache/status` | `security_admin`, `iam_admin`, `auditor` |
 | `POST /graph/cache/refresh` | `security_admin`, `iam_admin`, `auditor` |
 | `POST /graph/cache/invalidate` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /ai/context` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /ai/evidence` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /ai/prompt` | `security_admin`, `iam_admin`, `auditor` |
 
 ### Delegated Administration
 

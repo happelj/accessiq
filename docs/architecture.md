@@ -1,6 +1,6 @@
 # AccessIQ Architecture
 
-AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, SCIM provisioning, connector execution, provisioning history, and access review governance. The system is intentionally modular so future remediation and AI explanations can be added without rewriting the core API.
+AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, SCIM provisioning, connector execution, provisioning history, access review governance, authorization graph traversal, and deterministic AI context assembly. The system is intentionally modular so future provider-backed explanations can be added without rewriting the core API.
 
 ## System Overview
 
@@ -37,6 +37,9 @@ flowchart LR
     GraphBuilder --> Graph["Authorization Graph"]
     Graph --> Query["Query Engine"]
     Query --> Evidence["Evidence Builder"]
+    Evidence --> AIContext["AI Context Assembly"]
+    AIContext --> Prompt["Structured Prompt"]
+    Prompt --> REST
     Evidence --> REST
 ```
 
@@ -110,6 +113,36 @@ flowchart LR
 ```
 
 The graph includes users, groups, applications, entitlements, delegations, certification campaigns, review items, provisioning jobs/history, remediation jobs, audit events, connectors, and enterprise profiles. It provides deterministic traversal and evidence for inspection, but it does not perform authorization decisions or replace the relational database.
+
+## AI Context Assembly
+
+Milestone 12A adds a deterministic AI preparation layer under `app/ai`:
+
+```mermaid
+flowchart LR
+    Question["User Question"]
+    Intent["Intent Classifier"]
+    Query["Graph Query Engine"]
+    Collect["Evidence Collection"]
+    Rank["Evidence Ranking"]
+    Budget["Token Budget"]
+    Context["Context Assembly"]
+    Prompt["Prompt Builder"]
+    Routes["AI REST API"]
+    Future["Future LLM Provider"]
+
+    Question --> Intent
+    Intent --> Query
+    Query --> Collect
+    Collect --> Rank
+    Rank --> Budget
+    Budget --> Context
+    Context --> Prompt
+    Prompt --> Routes
+    Routes -. "future integration only" .-> Future
+```
+
+The AI layer is read-only and deterministic. It uses explicit question parsing rules, graph queries, evidence normalization, duplicate removal, heuristic ranking, and approximate token budgeting. It produces JSON context and prompt objects for future provider integration, but it does not call an LLM, use embeddings, perform semantic search, or make authorization/provisioning/governance decisions.
 
 ## Request Context
 
@@ -473,18 +506,20 @@ The current implementation intentionally does not include the queue, worker, or 
 
 ## Future AI Explanation Architecture
 
-Future AI explanation work should consume deterministic system context rather than replace policy decisions.
+Future AI explanation work should consume the deterministic context and prompt objects produced by `app/ai` rather than replace policy decisions.
 
 ```mermaid
 flowchart TD
-    Decision["Policy or provisioning decision"]
-    Context["Structured audit and policy context"]
-    Explanation["Future AI explanation service"]
+    Question["User question"]
+    Context["AI context assembly"]
+    Prompt["Structured prompt"]
+    Provider["Future LLM provider"]
     UserFacing["Human-readable explanation"]
 
-    Decision --> Context
-    Context --> Explanation
-    Explanation --> UserFacing
+    Question --> Context
+    Context --> Prompt
+    Prompt --> Provider
+    Provider --> UserFacing
 ```
 
-The policy engine remains deterministic and authoritative.
+The policy engine, graph, provisioning services, reviews, and remediation services remain deterministic and authoritative.
