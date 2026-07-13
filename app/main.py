@@ -28,6 +28,7 @@ from .governance.models import (
 )
 from .governance.routes import router as governance_router
 from .graph.routes import router as graph_router
+from .ai.routes import router as ai_router
 from .models import (
     AccessAssignment,
     Application,
@@ -504,6 +505,19 @@ app = FastAPI(
                 "operations."
             ),
         },
+        {
+            "name": "Authorization Graph",
+            "description": (
+                "Deterministic authorization graph traversal, evidence, and export."
+            ),
+        },
+        {
+            "name": "AI Context",
+            "description": (
+                "Deterministic evidence retrieval and prompt assembly for future "
+                "LLM integrations."
+            ),
+        },
     ],
 )
 
@@ -515,6 +529,7 @@ app.include_router(governance_router)
 app.include_router(remediation_router)
 app.include_router(delegation_router)
 app.include_router(graph_router)
+app.include_router(ai_router)
 
 
 @app.middleware("http")
