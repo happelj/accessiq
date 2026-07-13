@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..dependencies import get_remediation_service
 from ..models import User
 from ..rbac import require_roles
 from .enums import RemediationStatus, RemediationType
@@ -45,9 +44,9 @@ REMEDIATION_ROLES = ("security_admin", "iam_admin")
 def remediate_campaign(
     campaign_id: int,
     current_user: User = Depends(require_roles(*REMEDIATION_ROLES)),
-    db: Session = Depends(get_db),
+    service: RemediationService = Depends(get_remediation_service),
 ) -> CampaignRemediationResponse:
-    service = RemediationService(db)
+    db = service.db
     try:
         result = service.execute_campaign(campaign_id, actor=current_user)
         db.commit()
@@ -83,10 +82,9 @@ def list_remediation_jobs(
     sort_by: str | None = Query(default="created_at"),
     sort_order: str = Query(default="descending"),
     current_user: User = Depends(require_roles(*REMEDIATION_ROLES)),
-    db: Session = Depends(get_db),
+    service: RemediationService = Depends(get_remediation_service),
 ) -> list[RemediationJobResponse]:
     del current_user
-    service = RemediationService(db)
     try:
         jobs = service.list_jobs(
             filters=RemediationJobFilters(
@@ -118,10 +116,9 @@ def list_remediation_jobs(
 def get_remediation_job(
     job_id: int,
     current_user: User = Depends(require_roles(*REMEDIATION_ROLES)),
-    db: Session = Depends(get_db),
+    service: RemediationService = Depends(get_remediation_service),
 ) -> RemediationJobResponse:
     del current_user
-    service = RemediationService(db)
     try:
         job = service.lookup_job(job_id)
     except RemediationServiceError as exc:

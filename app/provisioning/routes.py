@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..dependencies import get_provisioning_job_service
 from ..models import ProvisioningHistory, User
 from ..rbac import require_roles
 from ..schemas import ProvisioningHistoryResponse, ProvisioningJobResponse
@@ -42,10 +41,9 @@ def list_provisioning_jobs(
     current_user: User = Depends(
         require_roles("security_admin", "iam_admin", "auditor")
     ),
-    db: Session = Depends(get_db),
+    service: ProvisioningJobService = Depends(get_provisioning_job_service),
 ) -> list[ProvisioningJobResponse]:
     del current_user
-    service = ProvisioningJobService(db)
     try:
         return service.list_jobs(
             filters=ProvisioningJobFilters(
@@ -82,10 +80,9 @@ def get_provisioning_job(
     current_user: User = Depends(
         require_roles("security_admin", "iam_admin", "auditor")
     ),
-    db: Session = Depends(get_db),
+    service: ProvisioningJobService = Depends(get_provisioning_job_service),
 ) -> ProvisioningJobResponse:
     del current_user
-    service = ProvisioningJobService(db)
     try:
         return service.lookup_job(job_id)
     except ProvisioningJobNotFoundError as exc:
@@ -119,10 +116,9 @@ def list_provisioning_history(
     current_user: User = Depends(
         require_roles("security_admin", "iam_admin", "auditor")
     ),
-    db: Session = Depends(get_db),
+    service: ProvisioningJobService = Depends(get_provisioning_job_service),
 ) -> list[ProvisioningHistoryResponse]:
     del current_user
-    service = ProvisioningJobService(db)
     try:
         history = service.list_history(
             filters=ProvisioningHistoryFilters(

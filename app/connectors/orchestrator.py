@@ -22,6 +22,8 @@ from ..domain.events import (
 )
 from ..domain.publisher import publish_domain_events
 from ..models import Application, Entitlement
+from ..observability import log_event, metrics_registry
+from ..request_context import get_request_context
 from ..services.provisioning_job_service import (
     ProvisioningHistoryEventType,
     ProvisioningJobService,
@@ -69,7 +71,12 @@ class ProvisioningOrchestrator:
         target_user_id: int | None = None,
     ) -> ConnectorResult:
         resolved_operation = ConnectorOperation(operation)
-        resolved_correlation_id = correlation_id or str(uuid4())
+        context = get_request_context()
+        resolved_correlation_id = (
+            correlation_id
+            or (context.correlation_id if context is not None else None)
+            or str(uuid4())
+        )
         connector = self.registry.get(connector_name)
         operation_payload = dict(payload or {})
         job_service = ProvisioningJobService(db) if db is not None else None
@@ -128,6 +135,7 @@ class ProvisioningOrchestrator:
                     attempt=attempt,
                 )
             )
+            metrics_registry.increment("connector_invocations_total")
             self._record_audit(
                 db,
                 requester_id=requester_id,
@@ -152,6 +160,7 @@ class ProvisioningOrchestrator:
                 decision = self.retry_policy.decision(exc, attempt=attempt)
 
                 if decision.should_retry:
+                    metrics_registry.increment("connector_retries_total")
                     if job_service is not None and job is not None:
                         job_service.record_retry(
                             job,
@@ -227,6 +236,17 @@ class ProvisioningOrchestrator:
                         ),
                     ]
                 )
+                metrics_registry.increment("connector_failures_total")
+                log_event(
+                    "connector_execution",
+                    status="failed",
+                    connector=connector.name,
+                    operation=resolved_operation.value,
+                    attempt=attempt,
+                    retryable=result.retryable,
+                    message=result.message,
+                    correlation_id=resolved_correlation_id,
+                )
                 self._record_audit(
                     db,
                     requester_id=requester_id,
@@ -290,6 +310,16 @@ class ProvisioningOrchestrator:
                         status=result.status.value,
                     ),
                 ]
+            )
+            metrics_registry.increment("connector_success_total")
+            log_event(
+                "connector_execution",
+                status=result.status.value,
+                connector=connector.name,
+                operation=resolved_operation.value,
+                attempt=attempt,
+                duration_ms=result.duration_ms,
+                correlation_id=resolved_correlation_id,
             )
             self._record_audit(
                 db,

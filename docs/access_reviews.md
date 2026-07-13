@@ -4,6 +4,8 @@ Milestone 8A adds the governance foundation for AccessIQ. Access reviews are the
 
 This layer records certification decisions. Remediation is a separate, explicit step after campaign completion so reviewers can certify access before any connector-backed action runs.
 
+Access review routes receive their services through the shared FastAPI dependency providers in `app/dependencies.py`. This keeps route construction consistent with remediation, provisioning, and connector paths while leaving campaign and review business logic in `app/governance/services.py`.
+
 ## IGA Concepts
 
 An access review campaign is a governance exercise over current access. A reviewer certifies each review item with one of three decisions:
@@ -163,6 +165,8 @@ Domain events:
 - `CertificationCampaignCancelled`
 - `CertificationDecisionRecorded`
 - `CertificationDecisionUpdated`
+
+Audit events inherit the request correlation ID when no explicit operation correlation ID is supplied.
 
 ## Future Remediation
 

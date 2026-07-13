@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+import logging
 from threading import Lock
+from time import perf_counter
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from sqlalchemy import inspect, select, text
@@ -9,8 +11,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from .audit_service import create_audit_event
 from .auth import create_access_token, get_current_user, hash_password, verify_password
+from .connectors.registry import ConnectorRegistry
 from .config import get_auth_settings
 from .database import Base, SessionLocal, engine, get_db
+from .dependencies import get_connector_registry, get_delegation_service
+from .health import build_health_report
 from .connectors.routes import router as connector_router
 from .delegation.enums import DelegatedAction
 from .delegation.models import DelegationAssignment
@@ -34,6 +39,7 @@ from .models import (
     ProvisioningJob,
     User,
 )
+from .observability import configure_logging, log_event, metrics_registry
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .provisioning.routes import router as provisioning_router
 from .remediation.models import RemediationJob
@@ -55,6 +61,12 @@ from .schemas import (
     TokenResponse,
     UserCreate,
     UserResponse,
+)
+from .request_context import (
+    CORRELATION_ID_HEADER,
+    create_request_context,
+    reset_request_context,
+    set_request_context,
 )
 
 SEED_USER_PASSWORD = "Password123!"
@@ -183,6 +195,7 @@ SEEDED_ENTITLEMENTS = [
 
 _database_initialization_lock = Lock()
 _database_initialized = False
+configure_logging()
 
 
 def ensure_schema_compatibility() -> None:
@@ -503,9 +516,44 @@ app.include_router(delegation_router)
 
 
 @app.middleware("http")
-async def ensure_database_initialized(request: Request, call_next):
-    initialize_database()
-    return await call_next(request)
+async def request_context_middleware(request: Request, call_next):
+    context = create_request_context(request)
+    token = set_request_context(context)
+    started_at = perf_counter()
+    metrics_registry.increment("http_requests_total")
+
+    try:
+        try:
+            initialize_database()
+            response = await call_next(request)
+        except Exception:
+            metrics_registry.increment("http_request_errors_total")
+            log_event(
+                "http_request",
+                status="error",
+                level=logging.ERROR,
+                method=request.method,
+                path=request.url.path,
+                duration_ms=round((perf_counter() - started_at) * 1000, 3),
+            )
+            raise
+
+        response.headers[CORRELATION_ID_HEADER] = context.correlation_id
+        if response.status_code >= 400:
+            metrics_registry.increment("http_request_errors_total")
+
+        log_event(
+            "http_request",
+            status="succeeded" if response.status_code < 500 else "failed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=round((perf_counter() - started_at) * 1000, 3),
+        )
+
+        return response
+    finally:
+        reset_request_context(token)
 
 
 @app.get(
@@ -529,16 +577,17 @@ def read_root() -> dict[str, str]:
     summary="Check service health",
     description="Checks that the API can reach its configured database.",
 )
-def health_check(db: Session = Depends(get_db)) -> HealthResponse:
+def health_check(
+    db: Session = Depends(get_db),
+    registry: ConnectorRegistry = Depends(get_connector_registry),
+) -> HealthResponse:
     try:
-        db.execute(text("SELECT 1"))
+        return build_health_report(db=db, registry=registry)
     except SQLAlchemyError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database connection failed",
         ) from exc
-
-    return HealthResponse(status="healthy")
 
 
 @app.post(
@@ -646,6 +695,7 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    metrics_registry.increment("users_created_total")
 
     return user
 
@@ -738,6 +788,7 @@ def grant_access(
     access_data: AccessActionRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    delegation_service: DelegationService = Depends(get_delegation_service),
 ) -> AccessResponse:
     user = db.get(User, access_data.target_user_id)
 
@@ -760,7 +811,6 @@ def grant_access(
         )
 
     application_id = entitlement.application.id
-    delegation_service = DelegationService(db)
     authorization = delegation_service.authorize_access_action(
         actor=current_user,
         target_user=user,
@@ -934,6 +984,7 @@ def revoke_access(
     access_data: AccessActionRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    delegation_service: DelegationService = Depends(get_delegation_service),
 ) -> RevokeAccessResponse:
     user = db.get(User, access_data.target_user_id)
 
@@ -956,7 +1007,6 @@ def revoke_access(
         )
 
     application_id = entitlement.application.id
-    delegation_service = DelegationService(db)
     authorization = delegation_service.authorize_access_action(
         actor=current_user,
         target_user=user,

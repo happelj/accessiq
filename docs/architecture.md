@@ -76,6 +76,44 @@ flowchart TD
 
 Routes should stay thin. They authenticate, authorize, parse request context, and delegate to protocol or service helpers. Business rules belong in services or policy modules.
 
+## Request Context
+
+AccessIQ creates a per-request context in middleware before route execution. The context contains:
+
+- `correlation_id`
+- `request_start`
+- `client_ip`
+- `user_agent`
+- `authenticated_user`
+
+The API accepts caller-supplied `X-Correlation-ID` headers and generates one when omitted. The response always includes the resolved header. Authentication enriches the context with the loaded user, and audit/provisioning paths use the context correlation ID when a more specific operation ID is not supplied.
+
+## Configuration And Dependencies
+
+Environment access is centralized in `app/config.py`. The database, authentication, connector, and logging settings are exposed through cached providers. FastAPI dependencies in `app/dependencies.py` construct connector registries, orchestrators, provisioning services, governance services, remediation services, and delegation services. This keeps route modules from repeating construction logic while preserving service-level unit testability.
+
+Repositories were not added during the architecture review because the existing service boundaries already own the useful query and mutation behavior. Adding repository wrappers around straightforward SQLAlchemy calls would add indirection without reducing current duplication.
+
+## Observability
+
+`app/observability.py` provides two lightweight primitives:
+
+- structured JSON logging through the Python standard library
+- an in-memory metrics registry exposed through health responses
+
+Middleware records request counts, error counts, duration, method, path, status code, and correlation ID. User creation, audit, connector orchestration, review decisions, remediation jobs, and domain event publication increment focused counters.
+
+## Health Model
+
+`GET /health` returns a structured health report with:
+
+- top-level `status`
+- request `correlation_id`
+- subsystem reports for database, connectors, audit, provisioning, domain events, and configuration
+- metrics snapshot
+
+The database subsystem remains critical. If the database probe fails, the endpoint returns `503`. Other subsystem details are included to make local and container validation easier without introducing a metrics stack.
+
 ## Authentication Flow
 
 Users authenticate with `/login`. Passwords are verified using Argon2 through `passlib`, and successful login returns a signed JWT.
@@ -143,7 +181,10 @@ Audit events store:
 - entitlement
 - result
 - reason
+- correlation ID
 - timestamp
+
+When a route does not pass an explicit correlation ID, audit logging falls back to the request context correlation ID.
 
 ## Service Layer
 

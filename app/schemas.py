@@ -65,8 +65,28 @@ AuditAction = Literal[
 AuditResult = Literal["allowed", "denied", "succeeded"]
 
 
+class SubsystemHealth(BaseModel):
+    status: str = Field(description="Subsystem health status.")
+    details: dict[str, object] = Field(
+        default_factory=dict,
+        description="Subsystem-specific health metadata.",
+    )
+
+
 class HealthResponse(BaseModel):
     status: str = Field(description="Current service health status.")
+    correlation_id: str | None = Field(
+        default=None,
+        description="Request correlation ID assigned by the API.",
+    )
+    subsystems: dict[str, SubsystemHealth] = Field(
+        default_factory=dict,
+        description="Health details for API dependencies and internal subsystems.",
+    )
+    metrics: dict[str, int] = Field(
+        default_factory=dict,
+        description="Lightweight in-memory counters for operational visibility.",
+    )
 
 
 class UserCreate(BaseModel):

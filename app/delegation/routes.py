@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..dependencies import get_delegation_service
 from ..models import User
 from ..rbac import require_roles
 from .enums import DelegationRole, DelegationScopeType
@@ -57,9 +56,9 @@ def assign_delegation(
         },
     ),
     current_user: User = Depends(require_roles(*DELEGATION_ADMIN_ROLES)),
-    db: Session = Depends(get_db),
+    service: DelegationService = Depends(get_delegation_service),
 ) -> DelegationAssignmentResponse:
-    service = DelegationService(db)
+    db = service.db
     try:
         assignment = service.assign_delegate(
             delegate_user_id=payload.delegate_user_id,
@@ -102,10 +101,9 @@ def list_delegation_assignments(
     sort_by: str | None = Query(default="created_at"),
     sort_order: str = Query(default="descending"),
     current_user: User = Depends(require_roles(*DELEGATION_ADMIN_ROLES)),
-    db: Session = Depends(get_db),
+    service: DelegationService = Depends(get_delegation_service),
 ) -> list[DelegationAssignmentResponse]:
     del current_user
-    service = DelegationService(db)
     try:
         assignments = service.list_assignments(
             filters=DelegationAssignmentFilters(
@@ -137,10 +135,9 @@ def list_delegation_assignments(
 def get_delegation_assignment(
     assignment_id: int,
     current_user: User = Depends(require_roles(*DELEGATION_ADMIN_ROLES)),
-    db: Session = Depends(get_db),
+    service: DelegationService = Depends(get_delegation_service),
 ) -> DelegationAssignmentResponse:
     del current_user
-    service = DelegationService(db)
     try:
         assignment = service.lookup_assignment(assignment_id)
     except DelegationServiceError as exc:
@@ -158,9 +155,9 @@ def get_delegation_assignment(
 def remove_delegation_assignment(
     assignment_id: int,
     current_user: User = Depends(require_roles(*DELEGATION_ADMIN_ROLES)),
-    db: Session = Depends(get_db),
+    service: DelegationService = Depends(get_delegation_service),
 ) -> DelegationAssignmentResponse:
-    service = DelegationService(db)
+    db = service.db
     try:
         assignment = service.remove_delegate(assignment_id, actor=current_user)
         db.commit()

@@ -75,7 +75,7 @@ Correlation IDs connect:
 - `AuditEvent`
 - connector domain events
 
-If the caller does not supply a correlation ID, the orchestrator creates one.
+If the caller does not supply a correlation ID, the orchestrator uses the current request context correlation ID when available. Executions outside an HTTP request still get a generated UUID.
 
 ```mermaid
 flowchart LR
@@ -191,3 +191,7 @@ flowchart TD
 ```
 
 This keeps provisioning jobs and history as the operational source of truth for connector delivery while remediation jobs remain the governance source of truth for why the operation was requested.
+
+## Health And Metrics
+
+Provisioning is represented in `/health` by job and history counts. Connector orchestration also updates in-memory counters for invocation, retry, success, and failure totals. These counters are intentionally lightweight and process-local; they are meant for local validation and future metrics integration, not durable analytics.

@@ -2,6 +2,8 @@
 
 AccessIQ implements a focused SCIM 2.0 surface for enterprise identity provider integration. The implementation is isolated under `app/scim` and delegates durable mutations to reusable services under `app/services`.
 
+SCIM requests participate in the same request context middleware as the native REST API. Identity providers may send `X-Correlation-ID`; AccessIQ preserves it in the response and uses it for audit events when SCIM provisioning code does not pass a more specific operation correlation ID.
+
 ## Supported Endpoints
 
 | Endpoint | Status |
@@ -32,6 +34,8 @@ Allowed roles:
 - `iam_admin`
 
 Unauthorized and forbidden SCIM requests return SCIM-shaped `401` and `403` responses with `application/scim+json`.
+
+SCIM audit failures remain transactional. If audit creation fails during a SCIM mutation, the user, group, or enterprise profile change rolls back with a SCIM server error response.
 
 ## User Resources
 

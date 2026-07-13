@@ -1,10 +1,12 @@
-import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./accessiq.db")
+from .config import get_database_settings
+
+database_settings = get_database_settings()
+DATABASE_URL = database_settings.database_url
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 

@@ -28,6 +28,8 @@ from ..governance.models import (
     CertificationReviewItem,
 )
 from ..models import Entitlement, ProvisioningJob, User
+from ..observability import metrics_registry
+from ..request_context import get_request_context
 from .enums import RemediationStatus, RemediationType
 from .models import RemediationJob
 from .validation import connector_name_for_application
@@ -161,10 +163,15 @@ class RemediationService:
             raise UnsupportedRemediationDecisionError(item.id)
 
         self.prevent_duplicate_jobs(item.id)
+        context = get_request_context()
         job = RemediationJob(
             campaign_id=item.campaign_id,
             review_item_id=item.id,
-            correlation_id=correlation_id or str(uuid4()),
+            correlation_id=(
+                correlation_id
+                or (context.correlation_id if context is not None else None)
+                or str(uuid4())
+            ),
             remediation_type=remediation_type.value,
             status=RemediationStatus.PENDING.value,
             initiated_by=actor.id,
@@ -178,6 +185,7 @@ class RemediationService:
             result="succeeded",
             reason=f"Remediation job {job.id} created",
         )
+        metrics_registry.increment("remediation_jobs_total")
         self.pending_events.append(
             RemediationCreated(
                 occurred_at=event_time(),

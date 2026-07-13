@@ -21,6 +21,7 @@ from ..domain.events import (
 )
 from ..domain.publisher import publish_domain_events
 from ..models import AccessAssignment, Application, Entitlement, User
+from ..observability import metrics_registry
 from .enums import CampaignStatus, CertificationDecisionValue, ReviewItemStatus
 from .models import (
     CertificationCampaign,
@@ -575,6 +576,7 @@ class ReviewService:
             action=audit_action,
             reason=audit_reason,
         )
+        metrics_registry.increment("review_decisions_total")
 
         return self.lookup_review_item(item_id)
 

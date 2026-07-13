@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..dependencies import get_campaign_service, get_review_service
 from ..models import User
 from ..rbac import require_roles
 from .enums import CampaignStatus, CertificationDecisionValue, ReviewItemStatus
@@ -66,9 +66,9 @@ def create_campaign(
         },
     ),
     current_user: User = Depends(require_roles(*WRITE_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignResponse:
-    service = CampaignService(db)
+    db = service.db
     try:
         campaign = service.create_campaign(
             name=payload.name,
@@ -107,10 +107,9 @@ def list_campaigns(
     sort_by: str | None = Query(default="created_at"),
     sort_order: str = Query(default="descending"),
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> list[CampaignResponse]:
     del current_user
-    service = CampaignService(db)
     try:
         campaigns = service.list_campaigns(
             filters=CampaignFilters(
@@ -138,10 +137,9 @@ def list_campaigns(
 def get_campaign(
     campaign_id: int,
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignResponse:
     del current_user
-    service = CampaignService(db)
     try:
         campaign = service.lookup_campaign(campaign_id)
     except GovernanceServiceError as exc:
@@ -162,10 +160,9 @@ def get_campaign(
 def get_campaign_summary(
     campaign_id: int,
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignSummaryResponse:
     del current_user
-    service = CampaignService(db)
     try:
         campaign = service.summarize_campaign(campaign_id)
     except GovernanceServiceError as exc:
@@ -186,9 +183,9 @@ def get_campaign_summary(
 def start_campaign(
     campaign_id: int,
     current_user: User = Depends(require_roles(*WRITE_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignResponse:
-    service = CampaignService(db)
+    db = service.db
     try:
         campaign = service.start_campaign(campaign_id, actor=current_user)
         _commit(db)
@@ -213,9 +210,9 @@ def start_campaign(
 def cancel_campaign(
     campaign_id: int,
     current_user: User = Depends(require_roles(*WRITE_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignResponse:
-    service = CampaignService(db)
+    db = service.db
     try:
         campaign = service.cancel_campaign(campaign_id, actor=current_user)
         _commit(db)
@@ -243,9 +240,9 @@ def cancel_campaign(
 def complete_campaign(
     campaign_id: int,
     current_user: User = Depends(require_roles(*WRITE_ROLES)),
-    db: Session = Depends(get_db),
+    service: CampaignService = Depends(get_campaign_service),
 ) -> CampaignResponse:
-    service = CampaignService(db)
+    db = service.db
     try:
         campaign = service.complete_campaign(campaign_id, actor=current_user)
         _commit(db)
@@ -280,10 +277,9 @@ def list_review_items(
     sort_by: str | None = Query(default="id"),
     sort_order: str = Query(default="ascending"),
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: ReviewService = Depends(get_review_service),
 ) -> list[ReviewItemResponse]:
     del current_user
-    service = ReviewService(db)
     try:
         items = service.list_review_items(
             campaign_id,
@@ -312,10 +308,9 @@ def list_review_items(
 def get_review_item(
     item_id: int,
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: ReviewService = Depends(get_review_service),
 ) -> ReviewItemResponse:
     del current_user
-    service = ReviewService(db)
     try:
         item = service.lookup_review_item(item_id)
     except GovernanceServiceError as exc:
@@ -356,9 +351,9 @@ def record_decision(
         },
     ),
     current_user: User = Depends(require_roles(*READ_ROLES)),
-    db: Session = Depends(get_db),
+    service: ReviewService = Depends(get_review_service),
 ) -> ReviewItemResponse:
-    service = ReviewService(db)
+    db = service.db
     try:
         item = service.record_decision(
             item_id,

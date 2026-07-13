@@ -41,6 +41,8 @@ The framework is under `app/connectors`:
 - `orchestrator.py`: synchronous operation execution, audit, retry events, and result capture.
 - `salesforce.py`, `github.py`, `zendesk.py`, `finance.py`: deterministic mock connectors.
 
+Connector registries are provided through `app/dependencies.py` so health, connector routes, remediation, and future callers use the same construction path.
+
 ## Connector Lifecycle
 
 ```mermaid
@@ -204,6 +206,10 @@ Audit actions:
 The orchestrator records audit events when a database session, requester ID, and target user ID are supplied.
 
 Connector audit events include `correlation_id` when available, allowing audit rows to be tied back to `ProvisioningJob`, `ProvisioningHistory`, connector result data, and domain events.
+
+## Observability
+
+Connector orchestration increments lightweight counters for invocations, successes, failures, and retries. Connector execution also emits structured log events with connector, operation, attempt, duration, retryable state, and correlation ID.
 
 ## Domain Events
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .config import get_auth_settings
 from .database import get_db
 from .models import User
+from .request_context import set_authenticated_user
 
 password_context = CryptContext(schemes=["argon2"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login", auto_error=False)
@@ -94,5 +95,7 @@ def get_current_user(
 
     if user is None:
         raise unauthorized_exception()
+
+    set_authenticated_user(user)
 
     return user
