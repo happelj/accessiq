@@ -43,6 +43,18 @@ class ConnectorSettings:
     finance_api_base_url: str | None
 
 
+@dataclass(frozen=True)
+class DatabaseSettings:
+    database_url: str
+    database_backend: str
+
+
+@dataclass(frozen=True)
+class LoggingSettings:
+    logger_name: str
+    log_level: str
+
+
 @lru_cache
 def get_auth_settings() -> AuthSettings:
     return AuthSettings(
@@ -52,6 +64,15 @@ def get_auth_settings() -> AuthSettings:
             "ACCESS_TOKEN_EXPIRE_MINUTES",
             30,
         ),
+    )
+
+
+@lru_cache
+def get_database_settings() -> DatabaseSettings:
+    database_url = os.getenv("DATABASE_URL", "sqlite:///./accessiq.db")
+    return DatabaseSettings(
+        database_url=database_url,
+        database_backend=_database_backend(database_url),
     )
 
 
@@ -70,3 +91,20 @@ def get_connector_settings() -> ConnectorSettings:
         zendesk_api_base_url=os.getenv("ZENDESK_API_BASE_URL"),
         finance_api_base_url=os.getenv("FINANCE_API_BASE_URL"),
     )
+
+
+@lru_cache
+def get_logging_settings() -> LoggingSettings:
+    return LoggingSettings(
+        logger_name=os.getenv("ACCESSIQ_LOGGER_NAME", "accessiq"),
+        log_level=os.getenv("ACCESSIQ_LOG_LEVEL", "INFO").upper(),
+    )
+
+
+def _database_backend(database_url: str) -> str:
+    if database_url.startswith("sqlite"):
+        return "sqlite"
+    if database_url.startswith("postgresql"):
+        return "postgresql"
+
+    return "unknown"

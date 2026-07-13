@@ -12,7 +12,33 @@ def test_health_check() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+    body = response.json()
+
+    assert body["status"] == "healthy"
+    assert body["correlation_id"] == response.headers["X-Correlation-ID"]
+    assert set(body["subsystems"]) == {
+        "database",
+        "connectors",
+        "audit",
+        "provisioning",
+        "domain_events",
+        "configuration",
+    }
+    assert body["subsystems"]["database"]["status"] == "healthy"
+    assert isinstance(body["metrics"], dict)
+
+
+def test_health_check_accepts_supplied_correlation_id() -> None:
+    correlation_id = f"health-{uuid4()}"
+
+    response = client.get(
+        "/health",
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["X-Correlation-ID"] == correlation_id
+    assert response.json()["correlation_id"] == correlation_id
 
 
 def test_list_users() -> None:

@@ -43,6 +43,7 @@ docker compose up --build
 - [Access reviews and certification campaigns](docs/access_reviews.md)
 - [Remediation engine](docs/remediation.md)
 - [Delegated administration](docs/delegation.md)
+- [Architecture decision records](docs/adr)
 
 ## Authentication And API Authorization
 
@@ -67,14 +68,27 @@ JWT access tokens are signed locally and include standard `sub`, `iat`, and `exp
 
 Set these environment variables as needed:
 
+- `DATABASE_URL`: SQLAlchemy database URL. Default: `sqlite:///./accessiq.db`.
 - `JWT_SECRET`: signing secret for access tokens. Default is development-only.
 - `JWT_ALGORITHM`: JWT signing algorithm. Default: `HS256`.
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime in minutes. Default: `30`.
+- `ACCESSIQ_LOGGER_NAME`: stdlib logger name used for structured JSON events. Default: `accessiq`.
+- `ACCESSIQ_LOG_LEVEL`: stdlib logging level. Default: `INFO`.
 - `ENABLE_SALESFORCE_CONNECTOR`: enables the mock Salesforce connector. Default: `true`.
 - `ENABLE_GITHUB_CONNECTOR`: enables the mock GitHub connector. Default: `true`.
 - `ENABLE_ZENDESK_CONNECTOR`: enables the mock Zendesk connector. Default: `true`.
 - `ENABLE_FINANCE_CONNECTOR`: enables the mock Finance connector. Default: `true`.
 - `SALESFORCE_API_BASE_URL`, `GITHUB_API_BASE_URL`, `ZENDESK_API_BASE_URL`, `FINANCE_API_BASE_URL`: reserved for future real connector credentials and endpoints. Milestone 7A does not call external APIs.
+
+Configuration access is centralized in `app/config.py`; routes and services should use the settings providers rather than reading environment variables directly.
+
+## Operations And Observability
+
+Every request receives an `X-Correlation-ID`. If the caller supplies the header, AccessIQ preserves it; otherwise the middleware generates one and returns it in the response. The request context also stores request start time, client IP, user agent, and authenticated user metadata after JWT validation.
+
+`GET /health` returns a structured report with top-level status, correlation ID, subsystem status, and lightweight in-memory counters. The current subsystems are database, connectors, audit, provisioning, domain events, and configuration.
+
+Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes a small in-memory metrics registry for API requests, user creation, audit events, connector execution, retries, review decisions, remediation jobs, and domain event publication. This intentionally avoids a Prometheus dependency while keeping a clear upgrade path.
 
 ### Login Example
 

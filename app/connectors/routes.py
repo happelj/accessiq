@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ..dependencies import get_connector_registry
 from ..models import User
 from ..rbac import require_roles
 from ..schemas import ConnectorHealthResponse, ConnectorResponse
 from .base import IdentityConnector
 from .exceptions import UnknownConnectorError
-from .registry import ConnectorRegistry, build_connector_registry
+from .registry import ConnectorRegistry
 
 router = APIRouter(prefix="/connectors", tags=["Connectors"])
-
-
-def get_connector_registry() -> ConnectorRegistry:
-    return build_connector_registry()
 
 
 @router.get(

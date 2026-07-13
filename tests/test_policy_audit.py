@@ -352,6 +352,50 @@ def test_successful_grants_create_audit_events() -> None:
         revoke_test_assignment(target_user["id"], entitlement["id"])
 
 
+def test_grant_audit_event_uses_request_correlation_id() -> None:
+    requester = get_administrator()
+    entitlement = find_entitlement_by_slug("salesforce", "user")
+    unique_email = f"correlation-target-{uuid4()}@example.com"
+    create_response = client.post(
+        "/users",
+        json={
+            "name": "Correlation Target",
+            "email": unique_email,
+            "department": "Engineering",
+            "active": True,
+        },
+    )
+    assert create_response.status_code == 201
+    target_user = create_response.json()
+    correlation_id = f"audit-{uuid4()}"
+    headers = auth_headers(requester["email"])
+    headers["X-Correlation-ID"] = correlation_id
+
+    try:
+        response = client.post(
+            "/access/grant",
+            headers=headers,
+            json={
+                "target_user_id": target_user["id"],
+                "entitlement_id": entitlement["id"],
+            },
+        )
+
+        assert response.status_code == 201
+
+        events = get_audit_events(correlation_id=correlation_id)
+        assert any(
+            event["requester_id"] == requester["id"]
+            and event["target_user_id"] == target_user["id"]
+            and event["entitlement_id"] == entitlement["id"]
+            and event["action"] == "grant"
+            and event["result"] == "succeeded"
+            for event in events
+        )
+    finally:
+        revoke_test_assignment(target_user["id"], entitlement["id"])
+
+
 def test_successful_revokes_create_audit_events() -> None:
     requester = get_administrator()
     target_user = get_employee()

@@ -4,6 +4,8 @@ Milestone 8B adds governance-driven remediation. It bridges completed access rev
 
 The engine does not redesign authentication, RBAC, SCIM, connectors, provisioning jobs, or access reviews. It creates normalized remediation jobs and executes them through `ProvisioningOrchestrator`.
 
+Remediation routes receive `RemediationService` through shared dependency providers. The provider injects the same connector registry path used by connector metadata and health endpoints.
+
 ## Lifecycle
 
 ```mermaid
@@ -128,6 +130,8 @@ flowchart LR
     Correlation --> History
     Correlation --> Audit
 ```
+
+When a remediation request does not supply an operation-specific correlation ID, the service uses the active request context correlation ID before falling back to a generated UUID.
 
 ## Future Scheduler Architecture
 
