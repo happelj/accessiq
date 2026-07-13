@@ -32,6 +32,12 @@ flowchart LR
     Jobs --> DB
     Audit --> DB["Database"]
     Services --> DB
+    DB --> GraphBuilder["Graph Builder"]
+    Connectors --> GraphBuilder
+    GraphBuilder --> Graph["Authorization Graph"]
+    Graph --> Query["Query Engine"]
+    Query --> Evidence["Evidence Builder"]
+    Evidence --> REST
 ```
 
 ## Layered Architecture
@@ -75,6 +81,35 @@ flowchart TD
 ```
 
 Routes should stay thin. They authenticate, authorize, parse request context, and delegate to protocol or service helpers. Business rules belong in services or policy modules.
+
+## Authorization Graph
+
+Milestone 11A adds a deterministic read model under `app/graph`:
+
+```mermaid
+flowchart LR
+    Database["Relational database"]
+    Registry["Connector registry"]
+    Builder["Graph Builder"]
+    Cache["In-memory graph cache"]
+    Graph["Authorization Graph"]
+    Query["Query Engine"]
+    Evidence["Evidence Builder"]
+    Routes["Graph REST API"]
+    Export["JSON / Mermaid / DOT Export"]
+
+    Database --> Builder
+    Registry --> Builder
+    Builder --> Cache
+    Cache --> Graph
+    Graph --> Query
+    Query --> Evidence
+    Evidence --> Routes
+    Graph --> Export
+    Export --> Routes
+```
+
+The graph includes users, groups, applications, entitlements, delegations, certification campaigns, review items, provisioning jobs/history, remediation jobs, audit events, connectors, and enterprise profiles. It provides deterministic traversal and evidence for inspection, but it does not perform authorization decisions or replace the relational database.
 
 ## Request Context
 

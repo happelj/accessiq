@@ -43,6 +43,7 @@ docker compose up --build
 - [Access reviews and certification campaigns](docs/access_reviews.md)
 - [Remediation engine](docs/remediation.md)
 - [Delegated administration](docs/delegation.md)
+- [Authorization graph](docs/graph.md)
 - [Architecture decision records](docs/adr)
 
 ## Authentication And API Authorization
@@ -89,6 +90,27 @@ Every request receives an `X-Correlation-ID`. If the caller supplies the header,
 `GET /health` returns a structured report with top-level status, correlation ID, subsystem status, and lightweight in-memory counters. The current subsystems are database, connectors, audit, provisioning, domain events, and configuration.
 
 Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes a small in-memory metrics registry for API requests, user creation, audit events, connector execution, retries, review decisions, remediation jobs, and domain event publication. This intentionally avoids a Prometheus dependency while keeping a clear upgrade path.
+
+## Authorization Graph
+
+AccessIQ includes a deterministic in-memory authorization graph under `app/graph`. The graph is a read model built from the relational database plus the connector registry. It does not make authorization decisions, mutate database rows, provision resources, or call external APIs.
+
+The graph models users, groups, applications, entitlements, delegation assignments, certification campaigns, review items, provisioning jobs/history, remediation jobs, audit events, connectors, and enterprise profiles. It exposes evidence-backed read endpoints for access paths, manager chains, review history, remediation history, provisioning history, delegations, and shortest path traversal.
+
+Graph endpoints require `security_admin`, `iam_admin`, or `auditor`:
+
+- `GET /graph/users/{id}`
+- `GET /graph/users/{id}/access`
+- `GET /graph/users/{id}/evidence`
+- `GET /graph/groups/{id}`
+- `GET /graph/applications/{id}`
+- `GET /graph/path`
+- `GET /graph/export?format=json|mermaid|dot`
+- `GET /graph/cache/status`
+- `POST /graph/cache/refresh`
+- `POST /graph/cache/invalidate`
+
+Future AI explanation features can consume the graph and evidence collections, but Milestone 11A remains fully deterministic.
 
 ### Login Example
 
@@ -174,6 +196,16 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `GET /delegation/assignments` | `security_admin`, `iam_admin` |
 | `GET /delegation/assignments/{assignment_id}` | `security_admin`, `iam_admin` |
 | `DELETE /delegation/assignments/{assignment_id}` | `security_admin`, `iam_admin` |
+| `GET /graph/users/{id}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/users/{id}/access` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/users/{id}/evidence` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/groups/{id}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/applications/{id}` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/path` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/export` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /graph/cache/status` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /graph/cache/refresh` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /graph/cache/invalidate` | `security_admin`, `iam_admin`, `auditor` |
 
 ### Delegated Administration
 

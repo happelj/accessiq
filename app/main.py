@@ -27,6 +27,7 @@ from .governance.models import (
     CertificationReviewItem,
 )
 from .governance.routes import router as governance_router
+from .graph.routes import router as graph_router
 from .models import (
     AccessAssignment,
     Application,
@@ -513,6 +514,7 @@ app.include_router(provisioning_router)
 app.include_router(governance_router)
 app.include_router(remediation_router)
 app.include_router(delegation_router)
+app.include_router(graph_router)
 
 
 @app.middleware("http")
