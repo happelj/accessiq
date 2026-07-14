@@ -55,6 +55,12 @@ class LoggingSettings:
     log_level: str
 
 
+@dataclass(frozen=True)
+class CorsSettings:
+    allowed_origins: list[str]
+    allow_credentials: bool
+
+
 @lru_cache
 def get_auth_settings() -> AuthSettings:
     return AuthSettings(
@@ -98,6 +104,22 @@ def get_logging_settings() -> LoggingSettings:
     return LoggingSettings(
         logger_name=os.getenv("ACCESSIQ_LOGGER_NAME", "accessiq"),
         log_level=os.getenv("ACCESSIQ_LOG_LEVEL", "INFO").upper(),
+    )
+
+
+@lru_cache
+def get_cors_settings() -> CorsSettings:
+    origins = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    )
+    return CorsSettings(
+        allowed_origins=[
+            origin.strip()
+            for origin in origins.split(",")
+            if origin.strip()
+        ],
+        allow_credentials=_get_bool_env("CORS_ALLOW_CREDENTIALS", True),
     )
 
 
