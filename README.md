@@ -2,6 +2,14 @@
 
 Initial FastAPI service scaffold for AccessIQ.
 
+## Development Note
+
+AccessIQ was built as an AI-assisted software engineering project using ChatGPT and Codex.
+
+ChatGPT was used to help shape the project roadmap, define milestones, and generate detailed implementation prompts. Codex was used to implement the codebase iteratively from those prompts. My role was to guide the project direction, review the generated plans and prompts, run the application, perform manual testing, troubleshoot issues, and validate that each milestone worked as intended.
+
+This project demonstrates how AI-assisted development workflows can be used to build and iterate on a full-stack identity security platform, including backend APIs, frontend workflows, CI/CD, Docker, and Kubernetes packaging.
+
 ## Local Development
 
 Create a virtual environment and install dependencies:
