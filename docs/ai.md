@@ -1,17 +1,18 @@
-# AI Context Assembly
+# AI Explanation Assistant
 
-Milestone 12A adds a deterministic AI preparation layer. It prepares graph-backed evidence and structured prompt objects for future LLM integration.
+AccessIQ includes a grounded AI explanation assistant. It prepares graph-backed evidence, builds structured prompts, and asks a configured provider to explain only the deterministic evidence supplied by AccessIQ.
 
-It does not:
+The AI layer must not:
 
-- call OpenAI
-- call Anthropic
-- call any LLM
-- create embeddings
-- use pgvector
-- perform semantic search
 - make authorization decisions
+- grant access
+- revoke access
+- provision resources
+- perform governance actions
 - mutate AccessIQ state
+- invent evidence
+
+The implementation does not use embeddings, pgvector, or semantic search.
 
 ## Architecture
 
@@ -26,8 +27,9 @@ flowchart LR
     Budget["Approximate Token Budget"]
     Context["Context Assembly"]
     Prompt["Prompt Builder"]
+    Provider["LLM Provider"]
+    Response["Grounded Response"]
     API["REST API"]
-    Future["Future LLM Provider"]
 
     Question --> Intent
     Intent --> Graph
@@ -37,8 +39,9 @@ flowchart LR
     Rank --> Budget
     Budget --> Context
     Context --> Prompt
-    Prompt --> API
-    API -. "not implemented in 12A" .-> Future
+    Prompt --> Provider
+    Provider --> Response
+    Response --> API
 ```
 
 Package layout:
@@ -50,6 +53,13 @@ Package layout:
 - `app/ai/budget.py`: approximate token counting and evidence trimming.
 - `app/ai/context.py`: context assembly orchestration.
 - `app/ai/prompt.py`: structured prompt generation.
+- `app/ai/providers/base.py`: provider interface and provider exceptions.
+- `app/ai/providers/mock.py`: deterministic no-network explanation provider.
+- `app/ai/providers/openai.py`: optional OpenAI adapter.
+- `app/ai/providers/anthropic.py`: optional Anthropic adapter.
+- `app/ai/explanation.py`: explain/chat service orchestration.
+- `app/ai/conversation.py`: in-memory conversation store.
+- `app/ai/config.py`: AI and provider environment settings.
 - `app/ai/routes.py`: protected REST endpoints.
 
 ## Intent Detection
@@ -142,6 +152,73 @@ The prompt builder returns a structured JSON object. It includes:
 
 The system instructions require the future provider to use only supplied evidence, cite references, and avoid authorization, provisioning, governance, or policy decisions.
 
+## Provider Architecture
+
+Providers implement the `LLMProvider` interface:
+
+- `generate()`
+- `health()`
+- `provider_name()`
+- `metadata()`
+
+The interface is designed so streaming can be added later without changing the context or prompt pipeline.
+
+Supported providers:
+
+- `mock`: deterministic provider used by tests and local development.
+- `openai`: optional provider. Missing `OPENAI_API_KEY` reports `configuration_missing`.
+- `anthropic`: optional provider. Missing `ANTHROPIC_API_KEY` reports `configuration_missing`.
+
+The mock provider produces an answer entirely from ranked evidence and citations. It never uses the network.
+
+## Explanation Service
+
+The explanation service runs:
+
+```mermaid
+flowchart LR
+    Request["Explain Request"]
+    Context["Context Assembler"]
+    Prompt["Prompt Builder"]
+    Provider["Configured Provider"]
+    Answer["Grounded Answer"]
+
+    Request --> Context
+    Context --> Prompt
+    Prompt --> Provider
+    Provider --> Answer
+```
+
+Responses include:
+
+- answer
+- citations
+- evidence
+- provider metadata
+- timing
+- intent
+- assembled context
+
+Provider errors are mapped to consistent REST responses:
+
+- missing configuration or unavailable provider: `503`
+- timeout: `504`
+- rate limit: `429`
+- provider failure: `502`
+- unknown provider: `404`
+
+## Conversation Model
+
+Chat is in-memory only. A conversation contains:
+
+- `conversation_id`
+- messages
+- metadata
+- `created_at`
+- `updated_at`
+
+`POST /ai/chat` stores the user question and the assistant's grounded answer. It does not persist data to the database.
+
 ## REST API
 
 All AI context endpoints require one of:
@@ -155,6 +232,9 @@ Endpoints:
 - `POST /ai/context`: classify the question, assemble ranked evidence, and return context.
 - `POST /ai/evidence`: return ranked, deduplicated evidence and citations.
 - `POST /ai/prompt`: return context plus a structured prompt object.
+- `POST /ai/explain`: return provider-backed grounded explanation.
+- `POST /ai/chat`: append to an in-memory grounded explanation conversation.
+- `GET /ai/providers`: return provider health and metadata.
 
 Example request:
 
@@ -164,26 +244,40 @@ Example request:
   "user_id": 1,
   "application_id": 1,
   "entitlement_id": 1,
+  "provider": "mock",
   "max_tokens": 1200
 }
 ```
 
-## Future Provider Boundary
+## Configuration
 
-A future LLM provider can consume the prompt object produced by this layer. That provider should remain downstream of deterministic AccessIQ services:
+Environment variables:
+
+- `AI_ENABLED`: enables explanation endpoints. Default: `true`.
+- `LLM_PROVIDER`: default provider. Default: `mock`.
+- `AI_TIMEOUT`: provider timeout in seconds. Default: `30`.
+- `AI_MAX_TOKENS`: provider output token budget. Default: `1200`.
+- `OPENAI_API_KEY`: optional OpenAI API key.
+- `ANTHROPIC_API_KEY`: optional Anthropic API key.
+
+## Future Streaming
+
+The provider interface exposes provider metadata for streaming support, but streaming responses are not implemented yet. Future streaming should remain downstream of deterministic context assembly:
 
 ```mermaid
 flowchart LR
     AccessIQ["AccessIQ Deterministic Services"]
     Context["AI Context Assembly"]
     Prompt["Structured Prompt"]
-    Provider["Future LLM Provider"]
+    Provider["LLM Provider"]
+    Stream["Future Streaming Response"]
     Response["Explanation"]
 
     AccessIQ --> Context
     Context --> Prompt
     Prompt --> Provider
     Provider --> Response
+    Provider -. "future" .-> Stream
 ```
 
-The future provider may explain evidence, but it must not become the source of truth for access, policy, provisioning, reviews, or remediation.
+Providers may explain evidence, but they must not become the source of truth for access, policy, provisioning, reviews, or remediation.

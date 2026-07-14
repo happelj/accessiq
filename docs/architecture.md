@@ -1,6 +1,6 @@
 # AccessIQ Architecture
 
-AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, SCIM provisioning, connector execution, provisioning history, access review governance, authorization graph traversal, and deterministic AI context assembly. The system is intentionally modular so future provider-backed explanations can be added without rewriting the core API.
+AccessIQ is a FastAPI IAM learning platform that models authentication, API RBAC, deterministic access policy, audit logging, SCIM provisioning, connector execution, provisioning history, access review governance, authorization graph traversal, deterministic AI context assembly, and grounded AI explanations. The system is intentionally modular so provider-backed explanations can be added without rewriting the core API.
 
 ## System Overview
 
@@ -39,6 +39,9 @@ flowchart LR
     Query --> Evidence["Evidence Builder"]
     Evidence --> AIContext["AI Context Assembly"]
     AIContext --> Prompt["Structured Prompt"]
+    Prompt --> Provider["LLM Provider"]
+    Provider --> Grounded["Grounded Explanation"]
+    Grounded --> REST
     Prompt --> REST
     Evidence --> REST
 ```
@@ -129,7 +132,8 @@ flowchart LR
     Context["Context Assembly"]
     Prompt["Prompt Builder"]
     Routes["AI REST API"]
-    Future["Future LLM Provider"]
+    Provider["LLM Provider"]
+    Explanation["Grounded Explanation"]
 
     Question --> Intent
     Intent --> Query
@@ -139,10 +143,14 @@ flowchart LR
     Budget --> Context
     Context --> Prompt
     Prompt --> Routes
-    Routes -. "future integration only" .-> Future
+    Prompt --> Provider
+    Provider --> Explanation
+    Explanation --> Routes
 ```
 
-The AI layer is read-only and deterministic. It uses explicit question parsing rules, graph queries, evidence normalization, duplicate removal, heuristic ranking, and approximate token budgeting. It produces JSON context and prompt objects for future provider integration, but it does not call an LLM, use embeddings, perform semantic search, or make authorization/provisioning/governance decisions.
+The AI context layer is read-only and deterministic. It uses explicit question parsing rules, graph queries, evidence normalization, duplicate removal, heuristic ranking, and approximate token budgeting. The explanation layer passes the structured prompt to a configured provider and returns a grounded answer with citations. Providers may explain evidence, but they do not make authorization, provisioning, review, remediation, governance, or policy decisions.
+
+Provider adapters live under `app/ai/providers`. The mock provider is deterministic and no-network for tests. OpenAI and Anthropic adapters are optional and report unavailable when API keys are missing.
 
 ## Request Context
 
@@ -504,22 +512,24 @@ flowchart LR
 
 The current implementation intentionally does not include the queue, worker, or real SaaS API calls.
 
-## Future AI Explanation Architecture
+## AI Explanation Architecture
 
-Future AI explanation work should consume the deterministic context and prompt objects produced by `app/ai` rather than replace policy decisions.
+AI explanations consume deterministic context and prompt objects produced by `app/ai` rather than replacing policy decisions.
 
 ```mermaid
 flowchart TD
     Question["User question"]
     Context["AI context assembly"]
     Prompt["Structured prompt"]
-    Provider["Future LLM provider"]
+    Provider["LLM provider"]
     UserFacing["Human-readable explanation"]
+    Conversation["In-memory conversation"]
 
     Question --> Context
     Context --> Prompt
     Prompt --> Provider
     Provider --> UserFacing
+    UserFacing --> Conversation
 ```
 
 The policy engine, graph, provisioning services, reviews, and remediation services remain deterministic and authoritative.

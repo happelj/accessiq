@@ -152,3 +152,93 @@ class AIPromptResponse(BaseModel):
     intent: IntentClassification
     context: AIContext
     prompt: StructuredPrompt
+
+
+class LLMProviderMetadata(BaseModel):
+    name: str
+    display_name: str
+    enabled: bool
+    available: bool
+    supports_streaming: bool = False
+    model: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMProviderHealth(BaseModel):
+    provider: str
+    status: Literal[
+        "healthy",
+        "unavailable",
+        "disabled",
+        "configuration_missing",
+        "error",
+    ]
+    message: str
+    metadata: LLMProviderMetadata
+
+
+class LLMGenerationResult(BaseModel):
+    answer: str
+    provider: str
+    model: str | None = None
+    citations: list[Citation]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AIExplainRequest(AIContextRequest):
+    provider: str | None = Field(
+        default=None,
+        examples=["mock"],
+        description="Optional provider override. Defaults to configured LLM_PROVIDER.",
+    )
+
+
+class AIExplanationTiming(BaseModel):
+    context_ms: float
+    provider_ms: float
+    total_ms: float
+
+
+class AIExplanationResponse(BaseModel):
+    answer: str
+    citations: list[Citation]
+    evidence: list[AIEvidence]
+    provider: LLMProviderMetadata
+    timing: AIExplanationTiming
+    intent: IntentClassification
+    context: AIContext
+
+
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    created_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class Conversation(BaseModel):
+    conversation_id: str
+    messages: list[ConversationMessage]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIChatRequest(AIExplainRequest):
+    conversation_id: str | None = Field(
+        default=None,
+        description="Optional conversation ID. A new in-memory conversation is created when omitted.",
+    )
+
+
+class AIChatResponse(BaseModel):
+    conversation_id: str
+    message: ConversationMessage
+    explanation: AIExplanationResponse
+    conversation: Conversation
+
+
+class AIProvidersResponse(BaseModel):
+    configured_provider: str
+    enabled: bool
+    providers: list[LLMProviderHealth]
