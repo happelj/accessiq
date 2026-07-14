@@ -34,9 +34,30 @@ Start the API and PostgreSQL:
 docker compose up --build
 ```
 
+The Docker stack also includes a Vite frontend service at `http://localhost:5173`.
+The frontend calls the API at `http://localhost:8000` by default.
+
+Run the frontend outside Docker:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Run frontend validation:
+
+```bash
+cd frontend
+npm test
+npm run build
+```
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Frontend architecture](docs/frontend.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
@@ -82,6 +103,9 @@ Set these environment variables as needed:
 - `AI_MAX_TOKENS`: maximum provider output token budget. Default: `1200`.
 - `OPENAI_API_KEY`: optional OpenAI API key. Missing keys make the OpenAI provider unavailable without failing startup.
 - `ANTHROPIC_API_KEY`: optional Anthropic API key. Missing keys make the Anthropic provider unavailable without failing startup.
+- `CORS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call the API. Default includes the Vite dev server.
+- `CORS_ALLOW_CREDENTIALS`: whether CORS allows credentials. Default: `true`.
+- `VITE_API_BASE_URL`: frontend build/runtime API base URL used by the Docker frontend service. Default: `http://localhost:8000`.
 - `ENABLE_SALESFORCE_CONNECTOR`: enables the mock Salesforce connector. Default: `true`.
 - `ENABLE_GITHUB_CONNECTOR`: enables the mock GitHub connector. Default: `true`.
 - `ENABLE_ZENDESK_CONNECTOR`: enables the mock Zendesk connector. Default: `true`.
@@ -89,6 +113,12 @@ Set these environment variables as needed:
 - `SALESFORCE_API_BASE_URL`, `GITHUB_API_BASE_URL`, `ZENDESK_API_BASE_URL`, `FINANCE_API_BASE_URL`: reserved for future real connector credentials and endpoints. Milestone 7A does not call external APIs.
 
 Configuration access is centralized in `app/config.py`; routes and services should use the settings providers rather than reading environment variables directly.
+
+## Frontend Admin Portal
+
+The React admin portal lives in `frontend/`. It uses Vite, TypeScript, React Router, TanStack Query, a centralized API client, and an authentication context backed by the existing `POST /login` JWT flow.
+
+Initial pages include dashboard, users, applications, groups, access assignments, SCIM metadata, connectors, provisioning jobs, access reviews, remediation, authorization graph, AI assistant, and settings. Pages call existing backend APIs where practical and display placeholders where a full UI workflow is still future work.
 
 ## Operations And Observability
 

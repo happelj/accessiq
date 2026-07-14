@@ -5,6 +5,7 @@ from threading import Lock
 from time import perf_counter
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .audit_service import create_audit_event
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .connectors.registry import ConnectorRegistry
-from .config import get_auth_settings
+from .config import get_auth_settings, get_cors_settings
 from .database import Base, SessionLocal, engine, get_db
 from .dependencies import get_connector_registry, get_delegation_service
 from .health import build_health_report
@@ -522,6 +523,14 @@ app = FastAPI(
 )
 
 register_scim_exception_handlers(app)
+cors_settings = get_cors_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_settings.allowed_origins,
+    allow_credentials=cors_settings.allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(scim_router)
 app.include_router(connector_router)
 app.include_router(provisioning_router)
