@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 
 from app.config import get_auth_settings
 from app.main import app
@@ -62,9 +62,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def revoke_test_assignment(user_id: int, entitlement_id: int) -> None:
@@ -272,9 +270,7 @@ def test_duplicate_grant_still_behaves_correctly() -> None:
 
         assert first_response.status_code == 201
         assert second_response.status_code == 409
-        assert second_response.json() == {
-            "detail": "User already has this access"
-        }
+        assert second_response.json() == {"detail": "User already has this access"}
     finally:
         revoke_test_assignment(payload["target_user_id"], payload["entitlement_id"])
 

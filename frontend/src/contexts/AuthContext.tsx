@@ -25,7 +25,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [storedAuth, setStoredAuth] = useState<StoredAuth | null>(() => authStorage.get());
+  const [storedAuth, setStoredAuth] = useState<StoredAuth | null>(() =>
+    authStorage.get(),
+  );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -107,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       currentUser,
       token: storedAuth?.accessToken ?? null,
-      isAuthenticated: Boolean(storedAuth && storedAuth.expiresAt > Date.now()),
+      isAuthenticated: Boolean(storedAuth),
       isLoading,
       login,
       logout,

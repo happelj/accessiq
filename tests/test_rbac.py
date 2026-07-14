@@ -3,7 +3,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 
 from app.config import get_auth_settings
 from app.main import app
@@ -63,9 +63,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def create_target_user(department: str = "Engineering") -> dict[str, Any]:

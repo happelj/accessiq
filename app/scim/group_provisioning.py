@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..audit_service import create_audit_event
-from ..models import Application, Entitlement, Group, User
+from ..models import Application, Entitlement, User
 from ..services.group_service import (
     DuplicateGroupError,
     DuplicateGroupMemberError,
@@ -21,7 +21,7 @@ from ..services.group_service import (
 )
 from .errors import ScimHTTPException, raise_scim_error
 from .groups import build_group_location, group_to_scim_resource
-from .provisioning import SCIM_AUDIT_APPLICATION_SLUG, SCIM_PATCH_SCHEMA
+from .provisioning import SCIM_AUDIT_APPLICATION_SLUG
 
 SCIM_GROUP_AUDIT_ENTITLEMENT_SLUG = "group-lifecycle"
 
@@ -85,7 +85,7 @@ def create_scim_group(
         db.commit()
         service.publish_pending_events()
         db.refresh(group)
-    except DuplicateGroupError as exc:
+    except DuplicateGroupError:
         db.rollback()
         _audit_and_raise(
             db,
@@ -389,13 +389,22 @@ def _parse_member_id(member: Any) -> int:
 def _audit_action_for_patch(
     operations: list[GroupPatchOperation],
 ) -> str:
-    if any(operation.path == "members" and operation.op == "replace" for operation in operations):
+    if any(
+        operation.path == "members" and operation.op == "replace"
+        for operation in operations
+    ):
         return ACTION_GROUP_MEMBERS_REPLACE
 
-    if any(operation.path == "members" and operation.op == "add" for operation in operations):
+    if any(
+        operation.path == "members" and operation.op == "add"
+        for operation in operations
+    ):
         return ACTION_GROUP_MEMBER_ADD
 
-    if any(operation.path == "members" and operation.op == "remove" for operation in operations):
+    if any(
+        operation.path == "members" and operation.op == "remove"
+        for operation in operations
+    ):
         return ACTION_GROUP_MEMBER_REMOVE
 
     if any(operation.path == "displayName" for operation in operations):

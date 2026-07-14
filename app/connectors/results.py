@@ -113,11 +113,7 @@ class ConnectorResult:
         return cls(
             connector=connector,
             operation=operation,
-            status=(
-                ConnectorStatus.RETRYABLE
-                if retryable
-                else ConnectorStatus.FAILED
-            ),
+            status=(ConnectorStatus.RETRYABLE if retryable else ConnectorStatus.FAILED),
             message=message,
             duration_ms=duration_ms,
             retryable=retryable,

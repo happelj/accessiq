@@ -215,7 +215,9 @@ def test_graph_cache_load_refresh_and_invalidate(
         refreshed_graph = cache.refresh(db, registry=build_connector_registry())
         refreshed_status = cache.status()
 
-    assert graph_node_id(NodeType.USER, graph_fixture.target_user_id) in first_graph.nodes
+    assert (
+        graph_node_id(NodeType.USER, graph_fixture.target_user_id) in first_graph.nodes
+    )
     assert second_graph is first_graph
     assert first_status.loaded is True
     assert first_status.valid is True
@@ -245,7 +247,9 @@ def test_query_engine_lookups_and_shortest_path(graph_fixture: GraphFixture) -> 
         graph_node_id(NodeType.ENTITLEMENT, graph_fixture.entitlement_id)
     ]
     assert path.found is True
-    assert path.nodes[0].id == graph_node_id(NodeType.USER, graph_fixture.target_user_id)
+    assert path.nodes[0].id == graph_node_id(
+        NodeType.USER, graph_fixture.target_user_id
+    )
     assert path.nodes[-1].id == graph_node_id(
         NodeType.ENTITLEMENT,
         graph_fixture.entitlement_id,
@@ -260,7 +264,9 @@ def test_query_engine_manager_review_remediation_provisioning_and_delegations(
     manager_chain = engine.find_manager_chain(graph_fixture.target_user_id)
     review_history = engine.find_review_history(graph_fixture.target_user_id)
     remediation_history = engine.find_remediation_history(graph_fixture.target_user_id)
-    provisioning_history = engine.find_provisioning_history(graph_fixture.target_user_id)
+    provisioning_history = engine.find_provisioning_history(
+        graph_fixture.target_user_id
+    )
     delegations = engine.find_delegations(graph_fixture.delegate_user_id)
 
     assert [node.properties["source_id"] for node in manager_chain] == [

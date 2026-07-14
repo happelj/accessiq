@@ -233,8 +233,7 @@ def ensure_schema_compatibility() -> None:
 
         if "audit_events" in table_names:
             audit_columns = {
-                column["name"]
-                for column in inspector.get_columns("audit_events")
+                column["name"] for column in inspector.get_columns("audit_events")
             }
             if "correlation_id" not in audit_columns:
                 connection.execute(
@@ -627,9 +626,7 @@ def login(
     credentials: LoginRequest,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    user = db.scalar(
-        select(User).where(User.email == credentials.email.lower())
-    )
+    user = db.scalar(select(User).where(User.email == credentials.email.lower()))
 
     if user is None or not verify_password(
         credentials.password,
@@ -699,9 +696,7 @@ def create_user(
 ) -> User:
     normalized_email = str(user_data.email).lower()
 
-    existing_user = db.scalar(
-        select(User).where(User.email == normalized_email)
-    )
+    existing_user = db.scalar(select(User).where(User.email == normalized_email))
 
     if existing_user is not None:
         raise HTTPException(
@@ -788,9 +783,7 @@ def list_user_access(
     assignments = db.scalars(
         select(AccessAssignment)
         .options(
-            joinedload(AccessAssignment.entitlement).joinedload(
-                Entitlement.application
-            )
+            joinedload(AccessAssignment.entitlement).joinedload(Entitlement.application)
         )
         .where(AccessAssignment.user_id == user_id)
         .order_by(AccessAssignment.id)
@@ -980,9 +973,7 @@ def grant_access(
     assignment = db.scalar(
         select(AccessAssignment)
         .options(
-            joinedload(AccessAssignment.entitlement).joinedload(
-                Entitlement.application
-            )
+            joinedload(AccessAssignment.entitlement).joinedload(Entitlement.application)
         )
         .where(AccessAssignment.id == assignment_id)
     )

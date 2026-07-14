@@ -76,9 +76,7 @@ def ai_fixture() -> AIFixture:
 
 
 def test_intent_classification_rules_are_deterministic() -> None:
-    access = classify_intent(
-        AIContextRequest(question="Why does user 12 have access?")
-    )
+    access = classify_intent(AIContextRequest(question="Why does user 12 have access?"))
     access_gap = classify_intent(
         AIContextRequest(question="Why can't user 12 access application 2?")
     )
@@ -159,7 +157,9 @@ def test_prompt_generation_is_structured_and_constrained() -> None:
         ),
         subject={"user_id": 1},
         evidence=[evidence],
-        citations=[Citation(id=evidence.id, title=evidence.title, reference=evidence.reference)],
+        citations=[
+            Citation(id=evidence.id, title=evidence.title, reference=evidence.reference)
+        ],
         token_budget=TokenBudget(
             max_tokens=500,
             reserved_tokens=100,
@@ -169,7 +169,11 @@ def test_prompt_generation_is_structured_and_constrained() -> None:
             omitted_evidence_count=0,
             truncated=False,
         ),
-        graph_summary={"source": "authorization_graph", "node_count": 1, "edge_count": 1},
+        graph_summary={
+            "source": "authorization_graph",
+            "node_count": 1,
+            "edge_count": 1,
+        },
     )
 
     prompt = build_prompt(context)
@@ -199,7 +203,9 @@ def test_mock_provider_generates_grounded_explanations() -> None:
         ),
         subject={"user_id": 1},
         evidence=[evidence],
-        citations=[Citation(id=evidence.id, title=evidence.title, reference=evidence.reference)],
+        citations=[
+            Citation(id=evidence.id, title=evidence.title, reference=evidence.reference)
+        ],
         token_budget=TokenBudget(
             max_tokens=500,
             reserved_tokens=100,
@@ -209,7 +215,11 @@ def test_mock_provider_generates_grounded_explanations() -> None:
             omitted_evidence_count=0,
             truncated=False,
         ),
-        graph_summary={"source": "authorization_graph", "node_count": 1, "edge_count": 1},
+        graph_summary={
+            "source": "authorization_graph",
+            "node_count": 1,
+            "edge_count": 1,
+        },
     )
 
     result = MockLLMProvider().generate(
@@ -305,7 +315,9 @@ def test_ai_context_evidence_and_prompt_endpoints(ai_fixture: AIFixture) -> None
     prompt_response = client.post("/ai/prompt", headers=headers, json=payload)
 
     assert context_response.status_code == 200
-    assert context_response.json()["intent"]["intent"] == IntentType.EXPLAIN_ACCESS.value
+    assert (
+        context_response.json()["intent"]["intent"] == IntentType.EXPLAIN_ACCESS.value
+    )
     assert context_response.json()["evidence"]
     assert evidence_response.status_code == 200
     assert evidence_response.json()["citations"]
@@ -452,7 +464,11 @@ def empty_context() -> AIContext:
             omitted_evidence_count=0,
             truncated=False,
         ),
-        graph_summary={"source": "authorization_graph", "node_count": 0, "edge_count": 0},
+        graph_summary={
+            "source": "authorization_graph",
+            "node_count": 0,
+            "edge_count": 0,
+        },
     )
 
 

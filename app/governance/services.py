@@ -110,9 +110,7 @@ class InvalidCampaignTransitionError(GovernanceServiceError):
 
 class IncompleteCampaignError(GovernanceServiceError):
     def __init__(self, campaign: CertificationCampaign) -> None:
-        super().__init__(
-            "Campaign cannot be completed while review items are pending"
-        )
+        super().__init__("Campaign cannot be completed while review items are pending")
         self.campaign = campaign
 
 
@@ -471,7 +469,9 @@ class ReviewService:
             CertificationReviewItem.campaign_id == campaign_id
         )
         if filters.status is not None:
-            statement = statement.where(CertificationReviewItem.status == filters.status)
+            statement = statement.where(
+                CertificationReviewItem.status == filters.status
+            )
         if filters.reviewer_id is not None:
             statement = statement.where(
                 CertificationReviewItem.reviewer_id == filters.reviewer_id
@@ -552,9 +552,11 @@ class ReviewService:
                     reviewer_id=actor.id,
                     user_id=item.user_id,
                     entitlement_id=item.entitlement_id,
-                    previous_decision=previous_decision.value
-                    if previous_decision is not None
-                    else None,
+                    previous_decision=(
+                        previous_decision.value
+                        if previous_decision is not None
+                        else None
+                    ),
                     decision=decision.value,
                 )
             )

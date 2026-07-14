@@ -30,9 +30,9 @@ from ..services.provisioning_job_service import (
     ProvisioningJobStatus,
 )
 from .base import IdentityConnector
-from .exceptions import ConnectorError, ValidationError
+from .exceptions import ValidationError
 from .registry import ConnectorRegistry
-from .results import ConnectorOperation, ConnectorResult, ConnectorStatus
+from .results import ConnectorOperation, ConnectorResult
 from .retry import RetryPolicy
 
 CONNECTOR_AUDIT_APPLICATION_SLUG = "connector-framework"
@@ -273,8 +273,7 @@ class ProvisioningOrchestrator:
                         action=ACTION_PROVISIONING_JOB_FAILED,
                         result="denied",
                         reason=(
-                            f"Provisioning job {job.id} failed: "
-                            f"{result.message}"
+                            f"Provisioning job {job.id} failed: " f"{result.message}"
                         ),
                         correlation_id=resolved_correlation_id,
                     )

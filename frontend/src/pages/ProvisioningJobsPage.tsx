@@ -34,8 +34,16 @@ export function ProvisioningJobsPage() {
               { key: "id", header: "ID", render: (job) => job.id },
               { key: "connector", header: "Connector", render: (job) => job.connector },
               { key: "operation", header: "Operation", render: (job) => job.operation },
-              { key: "status", header: "Status", render: (job) => <StatusChip status={job.status} /> },
-              { key: "created", header: "Created", render: (job) => formatDateTime(job.created_at) },
+              {
+                key: "status",
+                header: "Status",
+                render: (job) => <StatusChip status={job.status} />,
+              },
+              {
+                key: "created",
+                header: "Created",
+                render: (job) => formatDateTime(job.created_at),
+              },
             ]}
           />
         </Card>
@@ -46,9 +54,17 @@ export function ProvisioningJobsPage() {
             columns={[
               { key: "job", header: "Job", render: (entry) => entry.job_id },
               { key: "event", header: "Event", render: (entry) => entry.event_type },
-              { key: "status", header: "Status", render: (entry) => <StatusChip status={entry.status} /> },
+              {
+                key: "status",
+                header: "Status",
+                render: (entry) => <StatusChip status={entry.status} />,
+              },
               { key: "message", header: "Message", render: (entry) => entry.message },
-              { key: "created", header: "Created", render: (entry) => formatDateTime(entry.created_at) },
+              {
+                key: "created",
+                header: "Created",
+                render: (entry) => formatDateTime(entry.created_at),
+              },
             ]}
           />
         </Card>

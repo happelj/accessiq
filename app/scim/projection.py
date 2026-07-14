@@ -67,11 +67,7 @@ def apply_attribute_projection(
         if key is not None:
             selected_keys.discard(key)
 
-    return {
-        key: value
-        for key, value in resource.items()
-        if key in selected_keys
-    }
+    return {key: value for key, value in resource.items() if key in selected_keys}
 
 
 def _parse_attribute_list(

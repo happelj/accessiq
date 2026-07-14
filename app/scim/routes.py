@@ -96,9 +96,7 @@ SCIM_USER_LIST_RESPONSES = {
         "content": {
             SCIM_MEDIA_TYPE: {
                 "example": {
-                    "schemas": [
-                        "urn:ietf:params:scim:api:messages:2.0:ListResponse"
-                    ],
+                    "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
                     "totalResults": 1,
                     "startIndex": 1,
                     "itemsPerPage": 1,
@@ -229,9 +227,7 @@ SCIM_PATCH_REQUEST_BODY = {
                         "Operations": [
                             {
                                 "op": "replace",
-                                "path": (
-                                    f"{SCIM_SCHEMA_ENTERPRISE_USER}:department"
-                                ),
+                                "path": (f"{SCIM_SCHEMA_ENTERPRISE_USER}:department"),
                                 "value": "Finance",
                             }
                         ],
@@ -278,9 +274,7 @@ SCIM_GROUP_LIST_RESPONSES = {
         "content": {
             SCIM_MEDIA_TYPE: {
                 "example": {
-                    "schemas": [
-                        "urn:ietf:params:scim:api:messages:2.0:ListResponse"
-                    ],
+                    "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
                     "totalResults": 1,
                     "startIndex": 1,
                     "itemsPerPage": 1,

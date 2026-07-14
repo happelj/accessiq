@@ -20,7 +20,6 @@ from app.governance.models import (
 )
 from app.main import app
 from app.models import ProvisioningHistory
-from app.remediation.enums import RemediationStatus
 from app.remediation.models import RemediationJob
 
 client = TestClient(app)
@@ -80,9 +79,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def create_target_user() -> dict[str, Any]:
@@ -285,9 +282,11 @@ def test_provisioning_history_linkage() -> None:
     )
 
     assert history_response.status_code == 200
-    assert {
-        history["event_type"] for history in history_response.json()
-    } >= {"job_created", "connector_invocation", "job_completed"}
+    assert {history["event_type"] for history in history_response.json()} >= {
+        "job_created",
+        "connector_invocation",
+        "job_completed",
+    }
 
 
 def test_audit_events() -> None:

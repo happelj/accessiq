@@ -10,7 +10,6 @@ from .models import (
     AIExplainRequest,
     AIExplanationResponse,
     AIExplanationTiming,
-    ConversationMessage,
 )
 from .prompt import build_prompt
 from .providers import LLMProvider

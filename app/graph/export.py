@@ -31,12 +31,7 @@ def export_graphviz_dot(graph: AuthorizationGraph) -> str:
 
 
 def safe_id(value: str) -> str:
-    return (
-        value.replace(":", "_")
-        .replace("-", "_")
-        .replace(".", "_")
-        .replace("/", "_")
-    )
+    return value.replace(":", "_").replace("-", "_").replace(".", "_").replace("/", "_")
 
 
 def _escape(value: str) -> str:

@@ -12,9 +12,9 @@ from ..models import Group, User
 from .errors import raise_scim_error
 
 FILTER_PATTERN = re.compile(
-    r'^\s*(?P<attribute>[A-Za-z][A-Za-z0-9_.:-]*)\s+'
-    r'(?P<operator>[A-Za-z]+)\s+'
-    r'(?P<value>.+?)\s*$'
+    r"^\s*(?P<attribute>[A-Za-z][A-Za-z0-9_.:-]*)\s+"
+    r"(?P<operator>[A-Za-z]+)\s+"
+    r"(?P<value>.+?)\s*$"
 )
 
 
@@ -61,9 +61,7 @@ def parse_scim_filter(
         _raise_invalid_filter(f"Unsupported filter attribute: {attribute}")
 
     if operator not in supported_operators:
-        _raise_invalid_filter(
-            f"{attribute} does not support the {operator} operator"
-        )
+        _raise_invalid_filter(f"{attribute} does not support the {operator} operator")
 
     if attribute == "active":
         if operator != "eq":
@@ -161,11 +159,7 @@ def _parse_quoted_string(raw_value: str) -> str:
 
 
 def _escape_like_pattern(value: str) -> str:
-    return (
-        value.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-    )
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _raise_invalid_filter(detail: str) -> None:

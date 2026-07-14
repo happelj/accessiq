@@ -75,9 +75,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def unique_name(prefix: str = "campaign") -> str:
@@ -356,9 +354,9 @@ def test_invalid_state_transition() -> None:
     )
 
     assert response.status_code == 409
-    assert "Cannot transition campaign from ACTIVE to ACTIVE" in response.json()[
-        "detail"
-    ]
+    assert (
+        "Cannot transition campaign from ACTIVE to ACTIVE" in response.json()["detail"]
+    )
 
 
 def test_review_generation() -> None:

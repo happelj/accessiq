@@ -99,8 +99,7 @@ def _user_evidence(
     user_id: int,
 ) -> list[AIEvidence]:
     return [
-        _from_graph_evidence(item, distance=0)
-        for item in engine.user_evidence(user_id)
+        _from_graph_evidence(item, distance=0) for item in engine.user_evidence(user_id)
     ]
 
 
@@ -120,10 +119,7 @@ def _node_detail_evidence(
 
 
 def _history_evidence(nodes: list[GraphNode]) -> list[AIEvidence]:
-    return [
-        _from_node(node, distance=1, priority=70)
-        for node in nodes
-    ]
+    return [_from_node(node, distance=1, priority=70) for node in nodes]
 
 
 def _manager_chain_evidence(

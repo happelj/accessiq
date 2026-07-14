@@ -52,7 +52,10 @@ export function App() {
                   <Route path="/provisioning-jobs" element={<ProvisioningJobsPage />} />
                   <Route path="/access-reviews" element={<AccessReviewsPage />} />
                   <Route path="/remediation" element={<RemediationPage />} />
-                  <Route path="/authorization-graph" element={<AuthorizationGraphPage />} />
+                  <Route
+                    path="/authorization-graph"
+                    element={<AuthorizationGraphPage />}
+                  />
                   <Route path="/ai-assistant" element={<AIAssistantPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>

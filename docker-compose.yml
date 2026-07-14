@@ -5,7 +5,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://accessiq:accessiq@db:5432/accessiq}
-      JWT_SECRET: ${JWT_SECRET:-dev-accessiq-change-me}
+      JWT_SECRET: ${JWT_SECRET:-dev-accessiq-change-me-minimum-32-bytes}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       AI_ENABLED: ${AI_ENABLED:-true}

@@ -171,7 +171,9 @@ class AuthorizationGraph:
 
     def shortest_path(self, source: str, target: str) -> GraphPath:
         if source not in self.nodes or target not in self.nodes:
-            return GraphPath(source=source, target=target, nodes=[], edges=[], found=False)
+            return GraphPath(
+                source=source, target=target, nodes=[], edges=[], found=False
+            )
 
         queue: deque[tuple[str, list[str], list[GraphEdge]]] = deque(
             [(source, [source], [])]

@@ -48,13 +48,21 @@ export function UsersPage() {
           columns={[
             { key: "name", header: "Name", render: (user) => user.name },
             { key: "email", header: "Email", render: (user) => user.email },
-            { key: "department", header: "Department", render: (user) => user.department },
+            {
+              key: "department",
+              header: "Department",
+              render: (user) => user.department,
+            },
             {
               key: "role",
               header: "Role",
               render: (user) => <Badge tone="blue">{user.operator_role}</Badge>,
             },
-            { key: "active", header: "Status", render: (user) => <StatusChip status={user.active} /> },
+            {
+              key: "active",
+              header: "Status",
+              render: (user) => <StatusChip status={user.active} />,
+            },
           ]}
         />
       </Card>

@@ -31,16 +31,25 @@ export function ConnectorsPage() {
           data={connectors.data ?? []}
           getRowKey={(connector) => connector.name}
           columns={[
-            { key: "name", header: "Connector", render: (connector) => connector.display_name },
-            { key: "enabled", header: "Enabled", render: (connector) => <StatusChip status={connector.enabled} /> },
+            {
+              key: "name",
+              header: "Connector",
+              render: (connector) => connector.display_name,
+            },
+            {
+              key: "enabled",
+              header: "Enabled",
+              render: (connector) => <StatusChip status={connector.enabled} />,
+            },
             {
               key: "health",
               header: "Health",
               render: (connector) => (
                 <StatusChip
                   status={
-                    healthChecks.find((query) => query.data?.connector === connector.name)?.data?.status ??
-                    "pending"
+                    healthChecks.find(
+                      (query) => query.data?.connector === connector.name,
+                    )?.data?.status ?? "pending"
                   }
                 />
               ),

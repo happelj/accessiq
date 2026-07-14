@@ -26,15 +26,28 @@ export function AccessReviewsPage() {
           getRowKey={(campaign) => campaign.id}
           columns={[
             { key: "name", header: "Campaign", render: (campaign) => campaign.name },
-            { key: "status", header: "Status", render: (campaign) => <StatusChip status={campaign.status} /> },
-            { key: "items", header: "Items", render: (campaign) => campaign.total_items, align: "right" },
+            {
+              key: "status",
+              header: "Status",
+              render: (campaign) => <StatusChip status={campaign.status} />,
+            },
+            {
+              key: "items",
+              header: "Items",
+              render: (campaign) => campaign.total_items,
+              align: "right",
+            },
             {
               key: "completion",
               header: "Completion",
               render: (campaign) => `${campaign.completion_percentage}%`,
               align: "right",
             },
-            { key: "created", header: "Created", render: (campaign) => formatDateTime(campaign.created_at) },
+            {
+              key: "created",
+              header: "Created",
+              render: (campaign) => formatDateTime(campaign.created_at),
+            },
           ]}
         />
       </Card>

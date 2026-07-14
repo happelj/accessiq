@@ -70,9 +70,7 @@ def scim_error_response_spec(status_code: int, description: str) -> dict[str, An
         "content": {
             SCIM_MEDIA_TYPE: {
                 "example": {
-                    "schemas": [
-                        "urn:ietf:params:scim:api:messages:2.0:Error"
-                    ],
+                    "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
                     "detail": description,
                     "status": str(status_code),
                 }

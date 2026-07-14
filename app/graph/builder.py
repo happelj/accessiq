@@ -409,7 +409,9 @@ def _add_delegation_edges(db: Session, graph: AuthorizationGraph) -> None:
             reference=f"/delegation/assignments/{assignment.id}",
             timestamp=assignment.created_at,
         )
-        scope_target = _delegation_scope_node_id(assignment.scope_type, assignment.scope_id)
+        scope_target = _delegation_scope_node_id(
+            assignment.scope_type, assignment.scope_id
+        )
         if scope_target is not None:
             _add_edge_if_nodes_exist(
                 graph,
@@ -560,7 +562,9 @@ def _add_remediation_edges(db: Session, graph: AuthorizationGraph) -> None:
             _add_edge_if_nodes_exist(
                 graph,
                 source=remediation_id,
-                target=graph_node_id(NodeType.PROVISIONING_JOB, job.provisioning_job_id),
+                target=graph_node_id(
+                    NodeType.PROVISIONING_JOB, job.provisioning_job_id
+                ),
                 edge_type=EdgeType.PROVISIONED_BY,
                 label="Remediation executed by provisioning job",
                 reference=f"/remediation/jobs/{job.id}",
@@ -573,10 +577,22 @@ def _add_audit_edges(db: Session, graph: AuthorizationGraph) -> None:
     for event in db.scalars(select(AuditEvent).order_by(AuditEvent.id)).all():
         event_id = graph_node_id(NodeType.AUDIT_EVENT, event.id)
         for source, label in (
-            (graph_node_id(NodeType.USER, event.requester_id), "Requester audited by event"),
-            (graph_node_id(NodeType.USER, event.target_user_id), "Target user audited by event"),
-            (graph_node_id(NodeType.APPLICATION, event.application_id), "Application audited by event"),
-            (graph_node_id(NodeType.ENTITLEMENT, event.entitlement_id), "Entitlement audited by event"),
+            (
+                graph_node_id(NodeType.USER, event.requester_id),
+                "Requester audited by event",
+            ),
+            (
+                graph_node_id(NodeType.USER, event.target_user_id),
+                "Target user audited by event",
+            ),
+            (
+                graph_node_id(NodeType.APPLICATION, event.application_id),
+                "Application audited by event",
+            ),
+            (
+                graph_node_id(NodeType.ENTITLEMENT, event.entitlement_id),
+                "Entitlement audited by event",
+            ),
         ):
             _add_edge_if_nodes_exist(
                 graph,

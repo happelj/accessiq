@@ -30,7 +30,10 @@ export function DataTable<T>({
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column.key} className={column.align === "right" ? "align-right" : ""}>
+              <th
+                key={column.key}
+                className={column.align === "right" ? "align-right" : ""}
+              >
                 {column.header}
               </th>
             ))}

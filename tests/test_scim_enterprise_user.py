@@ -342,9 +342,7 @@ def test_manager_assignment() -> None:
     manager = seed_user("manager@example.com")
 
     response = create_scim_user(
-        scim_user_payload(
-            enterprise=enterprise_extension(manager_id=manager["id"])
-        )
+        scim_user_payload(enterprise=enterprise_extension(manager_id=manager["id"]))
     )
 
     assert response.status_code == 201
@@ -357,9 +355,7 @@ def test_manager_assignment() -> None:
 
 def test_unknown_manager() -> None:
     response = create_scim_user(
-        scim_user_payload(
-            enterprise=enterprise_extension(manager_id=999999)
-        )
+        scim_user_payload(enterprise=enterprise_extension(manager_id=999999))
     )
 
     assert_scim_error(response, status_code=400, scim_type="invalidValue")
@@ -569,18 +565,15 @@ def test_domain_events() -> None:
         for event in events
     )
     assert any(
-        isinstance(event, DepartmentChanged)
-        and event.department == "Events"
+        isinstance(event, DepartmentChanged) and event.department == "Events"
         for event in events
     )
     assert any(
-        isinstance(event, OrganizationChanged)
-        and event.organization == "Event Org"
+        isinstance(event, OrganizationChanged) and event.organization == "Event Org"
         for event in events
     )
     assert any(
-        isinstance(event, ManagerChanged)
-        and event.manager_id == manager["id"]
+        isinstance(event, ManagerChanged) and event.manager_id == manager["id"]
         for event in events
     )
 
@@ -636,9 +629,9 @@ def test_openapi_documents_enterprise_examples() -> None:
     assert response.status_code == 200
 
     schema = response.json()
-    user_post_examples = schema["paths"]["/scim/v2/Users"]["post"][
-        "requestBody"
-    ]["content"][SCIM_MEDIA_TYPE]["examples"]
+    user_post_examples = schema["paths"]["/scim/v2/Users"]["post"]["requestBody"][
+        "content"
+    ][SCIM_MEDIA_TYPE]["examples"]
     user_patch_examples = schema["paths"]["/scim/v2/Users/{user_id}"]["patch"][
         "requestBody"
     ]["content"][SCIM_MEDIA_TYPE]["examples"]

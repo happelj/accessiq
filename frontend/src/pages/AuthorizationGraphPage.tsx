@@ -38,8 +38,14 @@ export function AuthorizationGraphPage() {
       {cache.error ? <ErrorPanel error={cache.error} /> : null}
       {graph.error ? <ErrorPanel error={graph.error} /> : null}
       <div className="stat-grid">
-        <StatCard label="Graph Nodes" value={cache.data?.node_count ?? graph.data?.nodes?.length ?? 0} />
-        <StatCard label="Graph Edges" value={cache.data?.edge_count ?? graph.data?.edges?.length ?? 0} />
+        <StatCard
+          label="Graph Nodes"
+          value={cache.data?.node_count ?? graph.data?.nodes?.length ?? 0}
+        />
+        <StatCard
+          label="Graph Edges"
+          value={cache.data?.edge_count ?? graph.data?.edges?.length ?? 0}
+        />
         <StatCard label="Cache" value={cache.data?.built ? "Built" : "Pending"} />
       </div>
       <Card title="Graph Status">
@@ -52,7 +58,11 @@ export function AuthorizationGraphPage() {
               key: "value",
               header: "Value",
               render: (row) =>
-                row.name === "Cache Built" ? <StatusChip status={String(row.value)} /> : row.value,
+                row.name === "Cache Built" ? (
+                  <StatusChip status={String(row.value)} />
+                ) : (
+                  row.value
+                ),
             },
           ]}
         />

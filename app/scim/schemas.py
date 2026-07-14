@@ -92,9 +92,7 @@ class SchemaAttribute(BaseModel):
     description: str
     required: bool = False
     caseExact: bool = False
-    mutability: Literal["readOnly", "readWrite", "immutable", "writeOnly"] = (
-        "readWrite"
-    )
+    mutability: Literal["readOnly", "readWrite", "immutable", "writeOnly"] = "readWrite"
     returned: Literal["always", "never", "default", "request"] = "default"
     uniqueness: Literal["none", "server", "global"] = "none"
     canonicalValues: list[str] | None = None
@@ -160,4 +158,3 @@ class ScimGroupResource(BaseModel):
 
 
 ScimResource = dict[str, Any]
-

@@ -6,7 +6,6 @@ import socket
 
 from ..config import AISettings
 from ..models import (
-    Citation,
     LLMGenerationResult,
     LLMProviderHealth,
     LLMProviderMetadata,
@@ -77,8 +76,7 @@ class OpenAIProvider(LLMProvider):
             {
                 "model": self.settings.openai_model,
                 "messages": [
-                    message.model_dump(mode="json")
-                    for message in prompt.messages
+                    message.model_dump(mode="json") for message in prompt.messages
                 ],
                 "max_tokens": max_tokens,
             }
@@ -100,16 +98,17 @@ class OpenAIProvider(LLMProvider):
             raise ProviderTimeoutError("OpenAI provider timed out") from exc
         except error.HTTPError as exc:
             if exc.code == 429:
-                raise ProviderRateLimitError("OpenAI provider rate limited the request") from exc
-            raise ProviderFailureError(f"OpenAI provider failed with HTTP {exc.code}") from exc
+                raise ProviderRateLimitError(
+                    "OpenAI provider rate limited the request"
+                ) from exc
+            raise ProviderFailureError(
+                f"OpenAI provider failed with HTTP {exc.code}"
+            ) from exc
         except OSError as exc:
             raise ProviderFailureError("OpenAI provider request failed") from exc
 
         answer = (
-            body.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-            .strip()
+            body.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         )
         if not answer:
             raise ProviderFailureError("OpenAI provider returned an empty answer")

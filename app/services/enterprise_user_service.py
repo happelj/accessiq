@@ -82,9 +82,7 @@ class DuplicateEmployeeNumberError(EnterpriseUserServiceError):
         employee_number: str,
         existing_profile: EnterpriseUserProfile,
     ) -> None:
-        super().__init__(
-            f"Employee number {employee_number!r} is already assigned"
-        )
+        super().__init__(f"Employee number {employee_number!r} is already assigned")
         self.employee_number = employee_number
         self.existing_profile = existing_profile
 

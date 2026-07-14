@@ -64,7 +64,7 @@ class CorsSettings:
 @lru_cache
 def get_auth_settings() -> AuthSettings:
     return AuthSettings(
-        jwt_secret=os.getenv("JWT_SECRET", "dev-accessiq-change-me"),
+        jwt_secret=os.getenv("JWT_SECRET", "dev-accessiq-change-me-minimum-32-bytes"),
         jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
         access_token_expire_minutes=_get_int_env(
             "ACCESS_TOKEN_EXPIRE_MINUTES",
@@ -115,9 +115,7 @@ def get_cors_settings() -> CorsSettings:
     )
     return CorsSettings(
         allowed_origins=[
-            origin.strip()
-            for origin in origins.split(",")
-            if origin.strip()
+            origin.strip() for origin in origins.split(",") if origin.strip()
         ],
         allow_credentials=_get_bool_env("CORS_ALLOW_CREDENTIALS", True),
     )

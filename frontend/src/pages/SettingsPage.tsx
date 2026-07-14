@@ -50,9 +50,23 @@ export function SettingsPage() {
             data={providers.data?.providers ?? []}
             getRowKey={(provider) => provider.provider}
             columns={[
-              { key: "name", header: "Name", render: (provider) => provider.metadata.display_name },
-              { key: "status", header: "Status", render: (provider) => <StatusChip status={provider.status} /> },
-              { key: "available", header: "Available", render: (provider) => <StatusChip status={provider.metadata.available} /> },
+              {
+                key: "name",
+                header: "Name",
+                render: (provider) => provider.metadata.display_name,
+              },
+              {
+                key: "status",
+                header: "Status",
+                render: (provider) => <StatusChip status={provider.status} />,
+              },
+              {
+                key: "available",
+                header: "Available",
+                render: (provider) => (
+                  <StatusChip status={provider.metadata.available} />
+                ),
+              },
             ]}
           />
         </Card>

@@ -54,10 +54,9 @@ export const accessIqApi = {
   },
 
   listEntitlements(applicationId: number): Promise<Entitlement[]> {
-    return apiClient.get<Entitlement[]>(
-      `/applications/${applicationId}/entitlements`,
-      { auth: false },
-    );
+    return apiClient.get<Entitlement[]>(`/applications/${applicationId}/entitlements`, {
+      auth: false,
+    });
   },
 
   listUserAccess(userId: number): Promise<AccessAssignment[]> {
@@ -105,9 +104,7 @@ export const accessIqApi = {
   },
 
   getScimServiceProviderConfig(): Promise<Record<string, unknown>> {
-    return apiClient.get<Record<string, unknown>>(
-      "/scim/v2/ServiceProviderConfig",
-    );
+    return apiClient.get<Record<string, unknown>>("/scim/v2/ServiceProviderConfig");
   },
 
   getScimResourceTypes(): Promise<Record<string, unknown>> {
