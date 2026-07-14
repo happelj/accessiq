@@ -60,7 +60,10 @@ export function AIAssistantPage() {
             </label>
             <label>
               Provider
-              <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+              <select
+                value={provider}
+                onChange={(event) => setProvider(event.target.value)}
+              >
                 <option value="">Configured provider</option>
                 {(providers.data?.providers ?? []).map((item) => (
                   <option key={item.provider} value={item.provider}>
@@ -84,9 +87,21 @@ export function AIAssistantPage() {
             data={providers.data?.providers ?? []}
             getRowKey={(item) => item.provider}
             columns={[
-              { key: "provider", header: "Provider", render: (item) => item.metadata.display_name },
-              { key: "status", header: "Status", render: (item) => <StatusChip status={item.status} /> },
-              { key: "model", header: "Model", render: (item) => item.metadata.model ?? "Not set" },
+              {
+                key: "provider",
+                header: "Provider",
+                render: (item) => item.metadata.display_name,
+              },
+              {
+                key: "status",
+                header: "Status",
+                render: (item) => <StatusChip status={item.status} />,
+              },
+              {
+                key: "model",
+                header: "Model",
+                render: (item) => item.metadata.model ?? "Not set",
+              },
             ]}
           />
         </Card>
@@ -103,7 +118,11 @@ export function AIAssistantPage() {
               getRowKey={(citation) => citation.id}
               columns={[
                 { key: "title", header: "Title", render: (citation) => citation.title },
-                { key: "reference", header: "Reference", render: (citation) => citation.reference },
+                {
+                  key: "reference",
+                  header: "Reference",
+                  render: (citation) => citation.reference,
+                },
               ]}
             />
           </Card>
@@ -112,16 +131,32 @@ export function AIAssistantPage() {
               data={explanation.data.evidence}
               getRowKey={(evidence) => evidence.id}
               columns={[
-                { key: "type", header: "Type", render: (evidence) => evidence.evidence_type },
+                {
+                  key: "type",
+                  header: "Type",
+                  render: (evidence) => evidence.evidence_type,
+                },
                 { key: "title", header: "Title", render: (evidence) => evidence.title },
-                { key: "reference", header: "Reference", render: (evidence) => evidence.reference },
-                { key: "rank", header: "Rank", render: (evidence) => evidence.rank_score, align: "right" },
+                {
+                  key: "reference",
+                  header: "Reference",
+                  render: (evidence) => evidence.reference,
+                },
+                {
+                  key: "rank",
+                  header: "Rank",
+                  render: (evidence) => evidence.rank_score,
+                  align: "right",
+                },
               ]}
             />
           </Card>
         </div>
       ) : (
-        <EmptyState title="No explanation yet" detail="Submit a grounded question to see an answer." />
+        <EmptyState
+          title="No explanation yet"
+          detail="Submit a grounded question to see an answer."
+        />
       )}
     </>
   );

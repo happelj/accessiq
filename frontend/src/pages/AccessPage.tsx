@@ -53,9 +53,21 @@ export function AccessPage() {
           data={access.data ?? []}
           getRowKey={(assignment) => assignment.id}
           columns={[
-            { key: "application", header: "Application", render: (assignment) => assignment.application },
-            { key: "entitlement", header: "Entitlement", render: (assignment) => assignment.entitlement },
-            { key: "status", header: "Status", render: (assignment) => <StatusChip status={assignment.status} /> },
+            {
+              key: "application",
+              header: "Application",
+              render: (assignment) => assignment.application,
+            },
+            {
+              key: "entitlement",
+              header: "Entitlement",
+              render: (assignment) => assignment.entitlement,
+            },
+            {
+              key: "status",
+              header: "Status",
+              render: (assignment) => <StatusChip status={assignment.status} />,
+            },
             {
               key: "granted",
               header: "Granted",

@@ -11,9 +11,7 @@ from ..models import AccessAssignment, Application, Entitlement, Group, User
 
 class CertificationCampaign(Base):
     __tablename__ = "certification_campaigns"
-    __table_args__ = (
-        UniqueConstraint("name", name="uq_certification_campaigns_name"),
-    )
+    __table_args__ = (UniqueConstraint("name", name="uq_certification_campaigns_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), index=True, nullable=False)

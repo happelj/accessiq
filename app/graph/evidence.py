@@ -25,8 +25,7 @@ class EvidenceBuilder:
             )
         ]
         evidence.extend(
-            self.edge_evidence(edge)
-            for edge in self.graph.edges_for(node.id)
+            self.edge_evidence(edge) for edge in self.graph.edges_for(node.id)
         )
         return evidence
 
@@ -44,9 +43,7 @@ class EvidenceBuilder:
         return EvidenceItem(
             type=edge.type.value,
             title=edge.label,
-            description=(
-                f"{source_label} --{edge.type.value}-> {target_label}"
-            ),
+            description=(f"{source_label} --{edge.type.value}-> {target_label}"),
             reference=edge.reference,
             timestamp=edge.timestamp,
             correlation_id=edge.correlation_id,

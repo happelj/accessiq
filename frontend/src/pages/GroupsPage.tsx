@@ -24,8 +24,16 @@ export function GroupsPage() {
           data={groups.data?.Resources ?? []}
           getRowKey={(group) => group.id}
           columns={[
-            { key: "displayName", header: "Display Name", render: (group) => group.displayName },
-            { key: "members", header: "Members", render: (group) => group.members?.length ?? 0 },
+            {
+              key: "displayName",
+              header: "Display Name",
+              render: (group) => group.displayName,
+            },
+            {
+              key: "members",
+              header: "Members",
+              render: (group) => group.members?.length ?? 0,
+            },
             {
               key: "modified",
               header: "Last Modified",

@@ -28,8 +28,16 @@ export function RemediationPage() {
             { key: "id", header: "ID", render: (job) => job.id },
             { key: "campaign", header: "Campaign", render: (job) => job.campaign_id },
             { key: "type", header: "Type", render: (job) => job.remediation_type },
-            { key: "status", header: "Status", render: (job) => <StatusChip status={job.status} /> },
-            { key: "created", header: "Created", render: (job) => formatDateTime(job.created_at) },
+            {
+              key: "status",
+              header: "Status",
+              render: (job) => <StatusChip status={job.status} />,
+            },
+            {
+              key: "created",
+              header: "Created",
+              render: (job) => formatDateTime(job.created_at),
+            },
           ]}
         />
       </Card>

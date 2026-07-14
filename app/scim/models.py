@@ -262,4 +262,3 @@ def build_schemas() -> list[SchemaResource]:
         build_group_schema(),
         build_enterprise_user_schema(),
     ]
-

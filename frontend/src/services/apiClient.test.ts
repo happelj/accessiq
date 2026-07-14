@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiError } from "./apiClient";
+import { ApiClient } from "./apiClient";
 
 describe("ApiClient", () => {
   afterEach(() => {
@@ -7,11 +7,12 @@ describe("ApiClient", () => {
   });
 
   it("adds bearer authentication and serializes JSON bodies", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -31,12 +32,13 @@ describe("ApiClient", () => {
   it("throws a typed error for failed API responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ detail: "Invalid credentials" }), {
-          status: 401,
-          statusText: "Unauthorized",
-          headers: { "content-type": "application/json" },
-        }),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Invalid credentials" }), {
+            status: 401,
+            statusText: "Unauthorized",
+            headers: { "content-type": "application/json" },
+          }),
       ),
     );
 

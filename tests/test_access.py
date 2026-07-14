@@ -178,9 +178,7 @@ def test_duplicate_access_returns_409() -> None:
 
         assert first_response.status_code == 201
         assert second_response.status_code == 409
-        assert second_response.json() == {
-            "detail": "User already has this access"
-        }
+        assert second_response.json() == {"detail": "User already has this access"}
     finally:
         revoke_test_assignment(payload["target_user_id"], payload["entitlement_id"])
 

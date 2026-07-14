@@ -270,7 +270,9 @@ class DelegationService:
                 DelegationAssignment.scope_type == filters.scope_type
             )
         if filters.scope_id is not None:
-            statement = statement.where(DelegationAssignment.scope_id == filters.scope_id)
+            statement = statement.where(
+                DelegationAssignment.scope_id == filters.scope_id
+            )
         if filters.delegation_role is not None:
             statement = statement.where(
                 DelegationAssignment.delegation_role == filters.delegation_role
@@ -546,7 +548,9 @@ class DelegationService:
         if scope_type == DelegationScopeType.ENTITLEMENT:
             entitlement = self.db.get(Entitlement, assignment.scope_id)
             if entitlement is None:
-                raise DelegationScopeNotFoundError(scope_type.value, assignment.scope_id)
+                raise DelegationScopeNotFoundError(
+                    scope_type.value, assignment.scope_id
+                )
             return entitlement.application_id, entitlement.id
 
         if scope_type == DelegationScopeType.APPLICATION:
@@ -556,7 +560,9 @@ class DelegationService:
                 .order_by(Entitlement.id)
             )
             if entitlement is None:
-                raise DelegationScopeNotFoundError(scope_type.value, assignment.scope_id)
+                raise DelegationScopeNotFoundError(
+                    scope_type.value, assignment.scope_id
+                )
             return entitlement.application_id, entitlement.id
 
         fallback = self.db.scalar(
@@ -608,7 +614,9 @@ def _apply_sorting(
         raise UnsupportedDelegationSortFieldError(sort_by)
 
     if sort_order == "descending":
-        return statement.order_by(sort_expression.desc(), DelegationAssignment.id.desc())
+        return statement.order_by(
+            sort_expression.desc(), DelegationAssignment.id.desc()
+        )
 
     return statement.order_by(sort_expression.asc(), DelegationAssignment.id.asc())
 

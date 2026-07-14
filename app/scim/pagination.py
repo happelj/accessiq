@@ -76,4 +76,3 @@ def parse_pagination_parameters(
             minimum=0,
         ),
     )
-

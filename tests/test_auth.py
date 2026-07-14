@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 
 from app.auth import get_current_user, hash_password, verify_password
 from app.config import get_auth_settings

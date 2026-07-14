@@ -37,10 +37,7 @@ class ConnectorRegistry:
         return connector
 
     def list(self) -> list[IdentityConnector]:
-        return [
-            self._connectors[name]
-            for name in sorted(self._connectors)
-        ]
+        return [self._connectors[name] for name in sorted(self._connectors)]
 
     def exists(self, name: str) -> bool:
         return normalize_connector_name(name) in self._connectors

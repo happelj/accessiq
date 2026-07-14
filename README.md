@@ -58,6 +58,7 @@ npm run build
 
 - [Architecture](docs/architecture.md)
 - [Frontend architecture](docs/frontend.md)
+- [CI/CD quality gates](docs/ci-cd.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
@@ -119,6 +120,39 @@ Configuration access is centralized in `app/config.py`; routes and services shou
 The React admin portal lives in `frontend/`. It uses Vite, TypeScript, React Router, TanStack Query, a centralized API client, and an authentication context backed by the existing `POST /login` JWT flow.
 
 Initial pages include dashboard, users, applications, groups, access assignments, SCIM metadata, connectors, provisioning jobs, access reviews, remediation, authorization graph, AI assistant, and settings. Pages call existing backend APIs where practical and display placeholders where a full UI workflow is still future work.
+
+## CI/CD
+
+AccessIQ uses GitHub Actions for pull request and `main` branch validation. The workflow runs backend linting, Python formatting checks, MyPy, the full backend test suite, frontend ESLint, Prettier checks, TypeScript validation, Vitest, frontend production build, Docker build validation, and dependency security scans.
+
+Run the same core checks locally:
+
+```bash
+python -m pip install -r requirements-dev.txt
+ruff check app tests
+black --check app tests
+mypy
+pytest -vv
+pip-audit --requirement requirements.txt --strict --progress-spinner off
+
+cd frontend
+npm ci
+npm run lint
+npm run format:check
+npm run typecheck
+npm test
+npm run build
+npm audit --audit-level=moderate
+```
+
+Docker build validation:
+
+```bash
+docker build -t accessiq-api:ci .
+docker build -t accessiq-frontend:ci frontend
+```
+
+The CI workflow does not require GitHub secrets and does not deploy or publish images. See [CI/CD quality gates](docs/ci-cd.md) for branch protection recommendations and troubleshooting.
 
 ## Operations And Observability
 

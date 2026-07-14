@@ -62,10 +62,7 @@ def group_payload(
     return {
         "schemas": [SCIM_SCHEMA_GROUP],
         "displayName": display_name or unique_group_name(),
-        "members": [
-            {"value": str(member_id)}
-            for member_id in (member_ids or [])
-        ],
+        "members": [{"value": str(member_id)} for member_id in (member_ids or [])],
     }
 
 
@@ -312,9 +309,7 @@ def test_patch_replace_members() -> None:
 def test_list_members() -> None:
     alice = seed_user("alice@example.com")
     bob = seed_user("bob@example.com")
-    created = create_group(
-        group_payload(member_ids=[alice["id"], bob["id"]])
-    ).json()
+    created = create_group(group_payload(member_ids=[alice["id"], bob["id"]])).json()
 
     response = client.get(
         f"/scim/v2/Groups/{created['id']}",
@@ -328,9 +323,7 @@ def test_list_members() -> None:
 def test_duplicate_member_rejected() -> None:
     alice = seed_user("alice@example.com")
 
-    response = create_group(
-        group_payload(member_ids=[alice["id"], alice["id"]])
-    )
+    response = create_group(group_payload(member_ids=[alice["id"], alice["id"]]))
 
     assert_scim_error(response, status_code=409, scim_type="uniqueness")
 
@@ -408,9 +401,7 @@ def test_sorting() -> None:
 
     assert response.status_code == 200
 
-    display_names = [
-        group["displayName"] for group in response.json()["Resources"]
-    ]
+    display_names = [group["displayName"] for group in response.json()["Resources"]]
 
     assert display_names == sorted(display_names, key=str.lower)
 
@@ -610,8 +601,7 @@ def test_domain_event_add_member() -> None:
 
     assert response.status_code == 200
     assert any(
-        isinstance(event, GroupMembershipAdded)
-        for event in get_published_events()
+        isinstance(event, GroupMembershipAdded) for event in get_published_events()
     )
 
 
@@ -634,8 +624,7 @@ def test_domain_event_remove_member() -> None:
 
     assert response.status_code == 200
     assert any(
-        isinstance(event, GroupMembershipRemoved)
-        for event in get_published_events()
+        isinstance(event, GroupMembershipRemoved) for event in get_published_events()
     )
 
 
@@ -659,8 +648,7 @@ def test_domain_event_replace_members() -> None:
 
     assert response.status_code == 200
     assert any(
-        isinstance(event, GroupMembershipReplaced)
-        for event in get_published_events()
+        isinstance(event, GroupMembershipReplaced) for event in get_published_events()
     )
 
 

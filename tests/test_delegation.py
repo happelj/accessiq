@@ -74,9 +74,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def create_user(
@@ -375,8 +373,7 @@ def test_delegated_action_denied() -> None:
     assert response.status_code == 403
     assert response.json() == {"detail": "Insufficient privileges"}
     assert any(
-        isinstance(event, DelegatedAccessDenied)
-        for event in get_published_events()
+        isinstance(event, DelegatedAccessDenied) for event in get_published_events()
     )
 
 

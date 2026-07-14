@@ -12,12 +12,30 @@ import { formatNumber } from "../utils/format";
 export function DashboardPage() {
   const health = useQuery({ queryKey: ["health"], queryFn: accessIqApi.getHealth });
   const users = useQuery({ queryKey: ["users"], queryFn: accessIqApi.listUsers });
-  const groups = useQuery({ queryKey: ["scim-groups"], queryFn: () => accessIqApi.listScimGroups(100) });
-  const apps = useQuery({ queryKey: ["applications"], queryFn: accessIqApi.listApplications });
-  const connectors = useQuery({ queryKey: ["connectors"], queryFn: accessIqApi.listConnectors });
-  const jobs = useQuery({ queryKey: ["provisioning-jobs"], queryFn: () => accessIqApi.listProvisioningJobs(25) });
-  const campaigns = useQuery({ queryKey: ["campaigns"], queryFn: () => accessIqApi.listCampaigns(25) });
-  const providers = useQuery({ queryKey: ["ai-providers"], queryFn: accessIqApi.listAiProviders });
+  const groups = useQuery({
+    queryKey: ["scim-groups"],
+    queryFn: () => accessIqApi.listScimGroups(100),
+  });
+  const apps = useQuery({
+    queryKey: ["applications"],
+    queryFn: accessIqApi.listApplications,
+  });
+  const connectors = useQuery({
+    queryKey: ["connectors"],
+    queryFn: accessIqApi.listConnectors,
+  });
+  const jobs = useQuery({
+    queryKey: ["provisioning-jobs"],
+    queryFn: () => accessIqApi.listProvisioningJobs(25),
+  });
+  const campaigns = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: () => accessIqApi.listCampaigns(25),
+  });
+  const providers = useQuery({
+    queryKey: ["ai-providers"],
+    queryFn: accessIqApi.listAiProviders,
+  });
 
   const anyLoading = [
     health,
@@ -41,7 +59,10 @@ export function DashboardPage() {
         <StatCard label="Applications" value={apps.data?.length ?? 0} />
         <StatCard label="Provisioning Jobs" value={jobs.data?.length ?? 0} />
         <StatCard label="Connectors" value={connectors.data?.length ?? 0} />
-        <StatCard label="Active Campaigns" value={campaigns.data?.filter((item) => item.status === "ACTIVE").length ?? 0} />
+        <StatCard
+          label="Active Campaigns"
+          value={campaigns.data?.filter((item) => item.status === "ACTIVE").length ?? 0}
+        />
         <StatCard
           label="AI Provider"
           value={providers.data?.configured_provider ?? "Unavailable"}
@@ -79,5 +100,7 @@ function summarizeDetails(details: Record<string, unknown>): string {
       return `${key.replace(/_/g, " ")}: ${formatNumber(details[key])}`;
     }
   }
-  return Object.keys(details).length ? `${Object.keys(details).length} fields` : "No details";
+  return Object.keys(details).length
+    ? `${Object.keys(details).length} fields`
+    : "No details";
 }

@@ -91,9 +91,9 @@ def list_remediation_jobs(
                 campaign_id=campaign_id,
                 review_item_id=review_item_id,
                 status=job_status.value if job_status is not None else None,
-                remediation_type=remediation_type.value
-                if remediation_type is not None
-                else None,
+                remediation_type=(
+                    remediation_type.value if remediation_type is not None else None
+                ),
                 correlation_id=correlation_id,
             ),
             offset=start_index - 1,

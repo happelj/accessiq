@@ -305,9 +305,7 @@ class MockIdentityConnector(IdentityConnector):
         return ConnectorResult.success(
             connector=self.name,
             operation=operation,
-            message=(
-                f"{self.display_name} {operation.value} simulated successfully"
-            ),
+            message=(f"{self.display_name} {operation.value} simulated successfully"),
             duration_ms=round(duration_ms, 3),
             correlation_id=correlation_id,
             details={

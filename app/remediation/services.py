@@ -100,9 +100,7 @@ class DuplicateRemediationJobError(RemediationServiceError):
 
 class InvalidRemediationCampaignStateError(RemediationServiceError):
     def __init__(self, campaign: CertificationCampaign) -> None:
-        super().__init__(
-            f"Campaign {campaign.id} must be COMPLETED before remediation"
-        )
+        super().__init__(f"Campaign {campaign.id} must be COMPLETED before remediation")
         self.campaign = campaign
 
 
@@ -394,7 +392,9 @@ class RemediationService:
     ) -> list[RemediationJob]:
         statement = _remediation_job_query()
         if filters.campaign_id is not None:
-            statement = statement.where(RemediationJob.campaign_id == filters.campaign_id)
+            statement = statement.where(
+                RemediationJob.campaign_id == filters.campaign_id
+            )
         if filters.review_item_id is not None:
             statement = statement.where(
                 RemediationJob.review_item_id == filters.review_item_id
@@ -480,14 +480,16 @@ class RemediationService:
         )
 
     def _non_remediable_decision_count(self, campaign_id: int) -> int:
-        return self.db.scalar(
-            select(func.count(CertificationDecision.id))
-            .where(
-                CertificationDecision.campaign_id == campaign_id,
-                CertificationDecision.decision
-                != CertificationDecisionValue.REVOKE.value,
+        return (
+            self.db.scalar(
+                select(func.count(CertificationDecision.id)).where(
+                    CertificationDecision.campaign_id == campaign_id,
+                    CertificationDecision.decision
+                    != CertificationDecisionValue.REVOKE.value,
+                )
             )
-        ) or 0
+            or 0
+        )
 
     def _remediation_type_for_item(
         self,

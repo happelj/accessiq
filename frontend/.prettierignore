@@ -1,0 +1,5 @@
+dist
+coverage
+node_modules
+.vite-cache
+package-lock.json

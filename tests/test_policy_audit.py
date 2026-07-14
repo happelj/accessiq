@@ -76,9 +76,7 @@ def find_entitlement_by_slug(
         if entitlement["slug"] == entitlement_slug:
             return entitlement
 
-    raise AssertionError(
-        f"Entitlement with slug {entitlement_slug!r} was not found"
-    )
+    raise AssertionError(f"Entitlement with slug {entitlement_slug!r} was not found")
 
 
 def revoke_test_assignment(
@@ -565,9 +563,7 @@ def test_duplicate_grants_return_409_and_create_denied_audit_events() -> None:
 
         assert first_response.status_code == 201
         assert second_response.status_code == 409
-        assert second_response.json() == {
-            "detail": "User already has this access"
-        }
+        assert second_response.json() == {"detail": "User already has this access"}
 
         assert_audit_event_exists(
             requester_id=requester["id"],

@@ -93,8 +93,7 @@ class AuthorizationGraphQueryEngine:
 
     def find_remediation_history(self, user_id: int) -> list[GraphNode]:
         review_item_ids = {
-            node.properties["source_id"]
-            for node in self.find_review_history(user_id)
+            node.properties["source_id"] for node in self.find_review_history(user_id)
         }
         return [
             node

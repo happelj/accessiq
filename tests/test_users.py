@@ -101,6 +101,4 @@ def test_duplicate_email_is_rejected() -> None:
 
     assert first_response.status_code == 201
     assert second_response.status_code == 409
-    assert second_response.json() == {
-        "detail": "A user with this email already exists"
-    }
+    assert second_response.json() == {"detail": "A user with this email already exists"}

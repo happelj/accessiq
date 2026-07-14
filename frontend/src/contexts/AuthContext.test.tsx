@@ -9,7 +9,10 @@ function LoginHarness() {
   return (
     <div>
       <span>{auth.currentUser?.email ?? "anonymous"}</span>
-      <button type="button" onClick={() => auth.login("alice@example.com", "Password123!")}>
+      <button
+        type="button"
+        onClick={() => auth.login("alice@example.com", "Password123!")}
+      >
         Login
       </button>
     </div>
@@ -29,7 +32,11 @@ describe("AuthProvider", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith("/login")) {
-          return jsonResponse({ access_token: token, token_type: "bearer", expires_in: 1800 });
+          return jsonResponse({
+            access_token: token,
+            token_type: "bearer",
+            expires_in: 1800,
+          });
         }
         if (url.endsWith("/users/3")) {
           return jsonResponse({

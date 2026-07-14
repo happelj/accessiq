@@ -50,7 +50,11 @@ export function SCIMPage() {
           getRowKey={(row) => row.name}
           columns={[
             { key: "name", header: "Endpoint", render: (row) => row.name },
-            { key: "value", header: "Status", render: (row) => <StatusChip status={row.value.toLowerCase()} /> },
+            {
+              key: "value",
+              header: "Status",
+              render: (row) => <StatusChip status={row.value.toLowerCase()} />,
+            },
           ]}
         />
       </Card>

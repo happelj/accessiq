@@ -13,10 +13,13 @@ export function ApplicationsPage() {
     queryKey: ["applications"],
     queryFn: accessIqApi.listApplications,
   });
-  const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(
+    null,
+  );
   const selectedApplication =
-    applications.data?.find((application) => application.id === selectedApplicationId) ??
-    applications.data?.[0];
+    applications.data?.find(
+      (application) => application.id === selectedApplicationId,
+    ) ?? applications.data?.[0];
   const entitlements = useQuery({
     queryKey: ["entitlements", selectedApplication?.id],
     queryFn: () => accessIqApi.listEntitlements(selectedApplication?.id ?? 0),
@@ -47,19 +50,37 @@ export function ApplicationsPage() {
                   </button>
                 ),
               },
-              { key: "slug", header: "Slug", render: (application) => application.slug },
+              {
+                key: "slug",
+                header: "Slug",
+                render: (application) => application.slug,
+              },
             ]}
           />
         </Card>
-        <Card title={selectedApplication ? `${selectedApplication.name} Entitlements` : "Entitlements"}>
+        <Card
+          title={
+            selectedApplication
+              ? `${selectedApplication.name} Entitlements`
+              : "Entitlements"
+          }
+        >
           {entitlements.isLoading ? <LoadingSpinner /> : null}
           {entitlements.error ? <ErrorPanel error={entitlements.error} /> : null}
           <DataTable<Entitlement>
             data={entitlements.data ?? []}
             getRowKey={(entitlement) => entitlement.id}
             columns={[
-              { key: "name", header: "Name", render: (entitlement) => entitlement.name },
-              { key: "slug", header: "Slug", render: (entitlement) => entitlement.slug },
+              {
+                key: "name",
+                header: "Name",
+                render: (entitlement) => entitlement.name,
+              },
+              {
+                key: "slug",
+                header: "Slug",
+                render: (entitlement) => entitlement.slug,
+              },
             ]}
           />
         </Card>

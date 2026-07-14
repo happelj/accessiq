@@ -110,9 +110,9 @@ def list_delegation_assignments(
                 delegate_user_id=delegate_user_id,
                 scope_type=scope_type.value if scope_type is not None else None,
                 scope_id=scope_id,
-                delegation_role=delegation_role.value
-                if delegation_role is not None
-                else None,
+                delegation_role=(
+                    delegation_role.value if delegation_role is not None else None
+                ),
                 active=active,
             ),
             offset=start_index - 1,

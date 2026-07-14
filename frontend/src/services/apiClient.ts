@@ -54,7 +54,11 @@ export class ApiClient {
 
     const payload = await this.readPayload(response);
     if (!response.ok) {
-      throw new ApiError(this.errorMessage(payload, response), response.status, payload);
+      throw new ApiError(
+        this.errorMessage(payload, response),
+        response.status,
+        payload,
+      );
     }
 
     return payload as T;

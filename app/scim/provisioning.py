@@ -27,7 +27,7 @@ from ..services.user_service import (
     UserNotFoundError,
     UserService,
 )
-from .constants import SCIM_SCHEMA_ENTERPRISE_USER, SCIM_SCHEMA_USER
+from .constants import SCIM_SCHEMA_ENTERPRISE_USER
 from .errors import ScimHTTPException, raise_scim_error
 from .users import build_user_location, user_to_scim_resource
 
@@ -613,7 +613,7 @@ def _normalize_enterprise_patch_path(path: str) -> str | None:
 
     enterprise_prefix = f"{SCIM_SCHEMA_ENTERPRISE_USER}:"
     if path.lower().startswith(enterprise_prefix.lower()):
-        path = path[len(enterprise_prefix):]
+        path = path[len(enterprise_prefix) :]
 
     return ENTERPRISE_PATCH_PATHS.get(path.lower())
 
@@ -735,9 +735,7 @@ def _parse_enterprise_profile_payload(
             else UNSET
         ),
         manager_id=(
-            _parse_manager_value(payload["manager"])
-            if "manager" in payload
-            else UNSET
+            _parse_manager_value(payload["manager"]) if "manager" in payload else UNSET
         ),
     )
 

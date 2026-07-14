@@ -247,16 +247,17 @@ def test_orchestrator_persists_job_history_and_correlation_id() -> None:
     assert job["status"] == ConnectorStatus.SUCCESS.value
     assert job["attempt_count"] == 1
     assert history_response.status_code == 200
-    assert {
-        entry["event_type"] for entry in history_response.json()
-    } >= {"job_created", "job_started", "connector_invocation", "job_completed"}
+    assert {entry["event_type"] for entry in history_response.json()} >= {
+        "job_created",
+        "job_started",
+        "connector_invocation",
+        "job_completed",
+    }
     assert any(
-        isinstance(event, ProvisioningJobCreated)
-        for event in get_published_events()
+        isinstance(event, ProvisioningJobCreated) for event in get_published_events()
     )
     assert any(
-        isinstance(event, ProvisioningJobCompleted)
-        for event in get_published_events()
+        isinstance(event, ProvisioningJobCompleted) for event in get_published_events()
     )
 
 
@@ -303,8 +304,7 @@ def test_orchestrator_persists_retry_tracking() -> None:
     assert len(history_response.json()) == 1
     assert history_response.json()[0]["details"]["next_attempt"] == 2
     assert any(
-        isinstance(event, ProvisioningRetryRecorded)
-        for event in get_published_events()
+        isinstance(event, ProvisioningRetryRecorded) for event in get_published_events()
     )
 
 
@@ -344,8 +344,7 @@ def test_orchestrator_persists_failed_job() -> None:
     assert jobs_response.json()[0]["status"] == ConnectorStatus.FAILED.value
     assert jobs_response.json()[0]["last_error"] == "Simulated non-retryable failure"
     assert any(
-        isinstance(event, ProvisioningJobFailed)
-        for event in get_published_events()
+        isinstance(event, ProvisioningJobFailed) for event in get_published_events()
     )
 
 

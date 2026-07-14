@@ -430,9 +430,11 @@ def _review_item_to_response(
         reviewer_id=item.reviewer_id,
         reviewer_email=item.reviewer.email,
         status=ReviewItemStatus(item.status),
-        decision=CertificationDecisionValue(decision_record.decision)
-        if decision_record is not None
-        else None,
+        decision=(
+            CertificationDecisionValue(decision_record.decision)
+            if decision_record is not None
+            else None
+        ),
         comments=decision_record.comments if decision_record is not None else None,
         reviewed_at=item.reviewed_at,
         created_at=item.created_at,

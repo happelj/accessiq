@@ -3,7 +3,8 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import ExpiredSignatureError, JWTError, jwt
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -78,7 +79,7 @@ def get_current_user(
         payload = decode_access_token(token)
     except ExpiredSignatureError as exc:
         raise unauthorized_exception() from exc
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise unauthorized_exception() from exc
 
     subject = payload.get("sub")

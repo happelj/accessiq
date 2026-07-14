@@ -274,11 +274,7 @@ def test_orchestrator_execution_publishes_events() -> None:
 def test_orchestrator_retryable_failure() -> None:
     clear_published_events()
     registry = ConnectorRegistry(
-        [
-            SalesforceConnector(
-                simulation_mode=ConnectorSimulationMode.RETRYABLE_FAILURE
-            )
-        ]
+        [SalesforceConnector(simulation_mode=ConnectorSimulationMode.RETRYABLE_FAILURE)]
     )
     orchestrator = ProvisioningOrchestrator(
         registry=registry,
@@ -295,16 +291,13 @@ def test_orchestrator_retryable_failure() -> None:
     assert result.status == ConnectorStatus.RETRYABLE
     assert result.retryable is True
     assert any(
-        isinstance(event, ConnectorRetryScheduled)
-        for event in get_published_events()
+        isinstance(event, ConnectorRetryScheduled) for event in get_published_events()
     )
 
 
 def test_orchestrator_success_after_retry() -> None:
     clear_published_events()
-    registry = ConnectorRegistry(
-        [SalesforceConnector(failures_before_success=1)]
-    )
+    registry = ConnectorRegistry([SalesforceConnector(failures_before_success=1)])
     orchestrator = ProvisioningOrchestrator(
         registry=registry,
         retry_policy=RetryPolicy(max_attempts=2),
@@ -319,8 +312,7 @@ def test_orchestrator_success_after_retry() -> None:
 
     assert result.status == ConnectorStatus.SUCCESS
     assert any(
-        isinstance(event, ConnectorRetryScheduled)
-        for event in get_published_events()
+        isinstance(event, ConnectorRetryScheduled) for event in get_published_events()
     )
 
 
@@ -390,8 +382,7 @@ def test_orchestrator_audit_integration() -> None:
     assert result.status == ConnectorStatus.SUCCESS
     assert audit_response.status_code == 200
     assert any(
-        event["entitlement"] == "Connector Execution"
-        for event in audit_response.json()
+        event["entitlement"] == "Connector Execution" for event in audit_response.json()
     )
     assert completed_response.status_code == 200
     assert completed_response.json()
@@ -453,7 +444,9 @@ def test_connector_openapi_metadata() -> None:
     assert "/connectors/{name}/health" in schema["paths"]
 
 
-def test_environment_configuration_enable_disable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_environment_configuration_enable_disable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("ENABLE_SALESFORCE_CONNECTOR", "false")
     monkeypatch.setenv("ENABLE_GITHUB_CONNECTOR", "true")
     monkeypatch.setenv("ENABLE_ZENDESK_CONNECTOR", "false")

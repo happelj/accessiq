@@ -19,9 +19,7 @@ class RetryPolicy:
     max_attempts: int = 3
     base_delay_ms: int = 100
     max_delay_ms: int = 1_000
-    retryable_exception_types: tuple[type[Exception], ...] = (
-        RetryableConnectorError,
-    )
+    retryable_exception_types: tuple[type[Exception], ...] = (RetryableConnectorError,)
 
     def __post_init__(self) -> None:
         if self.max_attempts < 1:
