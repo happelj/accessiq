@@ -514,8 +514,8 @@ app = FastAPI(
         {
             "name": "AI Context",
             "description": (
-                "Deterministic evidence retrieval and prompt assembly for future "
-                "LLM integrations."
+                "Deterministic evidence retrieval, prompt assembly, and grounded "
+                "provider-backed explanations."
             ),
         },
     ],

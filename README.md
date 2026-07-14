@@ -76,6 +76,12 @@ Set these environment variables as needed:
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime in minutes. Default: `30`.
 - `ACCESSIQ_LOGGER_NAME`: stdlib logger name used for structured JSON events. Default: `accessiq`.
 - `ACCESSIQ_LOG_LEVEL`: stdlib logging level. Default: `INFO`.
+- `AI_ENABLED`: enables AI explanation endpoints. Default: `true`.
+- `LLM_PROVIDER`: configured explanation provider. Default: `mock`.
+- `AI_TIMEOUT`: provider timeout in seconds. Default: `30`.
+- `AI_MAX_TOKENS`: maximum provider output token budget. Default: `1200`.
+- `OPENAI_API_KEY`: optional OpenAI API key. Missing keys make the OpenAI provider unavailable without failing startup.
+- `ANTHROPIC_API_KEY`: optional Anthropic API key. Missing keys make the Anthropic provider unavailable without failing startup.
 - `ENABLE_SALESFORCE_CONNECTOR`: enables the mock Salesforce connector. Default: `true`.
 - `ENABLE_GITHUB_CONNECTOR`: enables the mock GitHub connector. Default: `true`.
 - `ENABLE_ZENDESK_CONNECTOR`: enables the mock Zendesk connector. Default: `true`.
@@ -115,9 +121,9 @@ Future AI explanation features can consume the graph and evidence collections, b
 
 ## AI Context Assembly
 
-AccessIQ includes a deterministic AI preparation layer under `app/ai`. It classifies user questions, queries the authorization graph, collects and deduplicates evidence, applies heuristic ranking, enforces an approximate token budget, and builds a structured prompt object for a future LLM provider.
+AccessIQ includes an AI explanation layer under `app/ai`. It classifies user questions, queries the authorization graph, collects and deduplicates evidence, applies heuristic ranking, enforces an approximate token budget, builds a structured prompt object, and asks a configured provider to explain only that evidence.
 
-This layer does not call OpenAI, Anthropic, embeddings, pgvector, semantic search, or any external AI service. It does not make authorization, provisioning, remediation, governance, or policy decisions.
+This layer does not use embeddings, pgvector, or semantic search. AI must not make authorization, provisioning, remediation, governance, or policy decisions. The provider may only explain deterministic evidence produced by AccessIQ.
 
 ```text
 User Question
@@ -128,6 +134,8 @@ User Question
   -> Token Budget
   -> Context Assembly
   -> Prompt Builder
+  -> LLM Provider
+  -> Grounded Response
 ```
 
 AI context endpoints require `security_admin`, `iam_admin`, or `auditor`:
@@ -135,8 +143,11 @@ AI context endpoints require `security_admin`, `iam_admin`, or `auditor`:
 - `POST /ai/context`
 - `POST /ai/evidence`
 - `POST /ai/prompt`
+- `POST /ai/explain`
+- `POST /ai/chat`
+- `GET /ai/providers`
 
-The prompt response is a JSON object containing system instructions, the original user question, assembled evidence, citations, constraints, and future-provider-ready messages. A future LLM integration can consume this prompt object, but AccessIQ's deterministic services remain authoritative.
+The default provider is `mock`, a deterministic provider that generates explanations directly from evidence without network access. Optional OpenAI and Anthropic provider adapters are available when configured with API keys; missing keys are reported through provider health and do not fail application startup.
 
 ### Login Example
 
@@ -235,6 +246,9 @@ Legacy `administrator` and `help_desk` role values are still accepted as compati
 | `POST /ai/context` | `security_admin`, `iam_admin`, `auditor` |
 | `POST /ai/evidence` | `security_admin`, `iam_admin`, `auditor` |
 | `POST /ai/prompt` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /ai/explain` | `security_admin`, `iam_admin`, `auditor` |
+| `POST /ai/chat` | `security_admin`, `iam_admin`, `auditor` |
+| `GET /ai/providers` | `security_admin`, `iam_admin`, `auditor` |
 
 ### Delegated Administration
 
