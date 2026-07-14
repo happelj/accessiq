@@ -1,0 +1,147 @@
+{{- if .Values.networkPolicies.enabled }}
+{{- if .Values.networkPolicies.defaultDeny.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "accessiq.fullname" . }}-default-deny
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "accessiq.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "accessiq.frontendName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "accessiq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.frontend.containerPort }}
+  {{- if .Values.networkPolicies.frontend.allowBackendEgress }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "accessiq.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.containerPort }}
+  {{- else }}
+  egress: []
+  {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "accessiq.backendName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "accessiq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.backend.containerPort }}
+  egress:
+    {{- if and .Values.database.internal.enabled .Values.networkPolicies.backend.allowPostgresqlEgress }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "accessiq.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: {{ .Values.database.internal.service.port }}
+    {{- end }}
+    {{- if .Values.networkPolicies.dnsEgress.enabled }}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- if .Values.networkPolicies.backend.externalDatabaseEgress.enabled }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicies.backend.externalDatabaseEgress.cidr }}
+            {{- with .Values.networkPolicies.backend.externalDatabaseEgress.except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        - protocol: {{ .Values.networkPolicies.backend.externalDatabaseEgress.protocol }}
+          port: {{ .Values.networkPolicies.backend.externalDatabaseEgress.port }}
+    {{- end }}
+    {{- if .Values.networkPolicies.backend.externalEgress.enabled }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicies.backend.externalEgress.cidr }}
+            {{- with .Values.networkPolicies.backend.externalEgress.except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        {{- toYaml .Values.networkPolicies.backend.externalEgress.ports | nindent 8 }}
+    {{- end }}
+{{- if .Values.database.internal.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "accessiq.postgresqlName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "accessiq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if .Values.networkPolicies.postgresql.allowBackendIngress }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "accessiq.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.database.internal.service.port }}
+    {{- else }}
+    []
+    {{- end }}
+  egress: []
+{{- end }}
+{{- end }}

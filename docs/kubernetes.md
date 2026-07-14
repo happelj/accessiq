@@ -1,8 +1,8 @@
 # Kubernetes And Helm
 
-Milestone 14A packages AccessIQ as a portable Kubernetes application. Helm is the primary deployment mechanism. The chart is cloud-agnostic and can be used with Docker Desktop Kubernetes, kind, minikube, AKS, GKE, or EKS after images are available to the target cluster.
+AccessIQ is packaged as a portable Kubernetes application through the Helm chart in `helm/accessiq`. The chart is cloud-agnostic and can be used with Docker Desktop Kubernetes, kind, minikube, AKS, GKE, or EKS after images are available to the target cluster.
 
-This milestone does not add AWS deployment, GitOps, autoscaling, service mesh configuration, or production PostgreSQL operations.
+The chart includes production-oriented hardening for the backend and frontend workloads while keeping local development values simple. It does not deploy AWS infrastructure, GitOps controllers, service meshes, external secret operators, or production PostgreSQL operations.
 
 ## Architecture
 
@@ -15,6 +15,11 @@ The Helm chart renders:
 - Backend ConfigMap and Secret
 - Frontend ConfigMap
 - Optional development PostgreSQL Deployment, Service, Secret, and PVC
+- Security contexts
+- Rolling update strategy controls
+- HorizontalPodAutoscalers
+- PodDisruptionBudgets
+- NetworkPolicies
 - Frontend Ingress
 - Backend API and Swagger Ingress
 - Helm test pod for the backend health endpoint
@@ -43,6 +48,25 @@ helm/accessiq/
 
 Use `values-dev.yaml` for local clusters and `values-prod.yaml` as a production-oriented starting point.
 
+## Production Hardening
+
+The chart hardens the backend and frontend workloads with:
+
+- pod-level `runAsNonRoot` settings
+- container-level `allowPrivilegeEscalation: false`
+- dropped Linux capabilities
+- `seccompProfile: RuntimeDefault`
+- read-only root filesystems for backend and frontend containers
+- writable `emptyDir` scratch mounts for `/tmp` and Nginx cache paths
+- soft pod anti-affinity
+- soft topology spread constraints
+- RollingUpdate deployment controls
+- optional HPAs, PDBs, and NetworkPolicies
+
+The backend image runs as UID/GID `10001`. The frontend production image uses the unprivileged Nginx image and listens on container port `8080`; the Kubernetes Service still exposes port `80`.
+
+The bundled PostgreSQL deployment is for development only. It receives conservative security settings, but it is not intended to replace a managed database or production-grade PostgreSQL operator.
+
 ## Local Validation
 
 Run these checks before deploying:
@@ -50,7 +74,9 @@ Run these checks before deploying:
 ```bash
 helm lint helm/accessiq
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml
+helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml | kubectl apply --dry-run=client -f -
+helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml | kubectl apply --dry-run=client -f -
 ```
 
 PowerShell users can use the same commands.
@@ -95,6 +121,28 @@ Run the Helm test:
 ```bash
 helm test accessiq --namespace accessiq-dev
 ```
+
+To validate the production-hardening resources on a local cluster without switching to production database values, enable them as overrides:
+
+```bash
+helm upgrade accessiq helm/accessiq \
+  --namespace accessiq-dev \
+  -f helm/accessiq/values-dev.yaml \
+  --set namespace.create=false \
+  --set networkPolicies.enabled=true \
+  --set backend.autoscaling.enabled=true \
+  --set frontend.autoscaling.enabled=true \
+  --set backend.pdb.enabled=true \
+  --set frontend.pdb.enabled=true
+```
+
+Then check:
+
+```bash
+kubectl -n accessiq-dev get pods,hpa,pdb,networkpolicy
+```
+
+Docker Desktop Kubernetes does not include metrics-server by default, so HPA targets may show `<unknown>`. Install metrics-server in clusters where CPU-based autoscaling should actively reconcile.
 
 ## Upgrade
 
@@ -154,6 +202,93 @@ Sensitive values include:
 
 For production, prefer pre-created Kubernetes Secrets, a sealed secret workflow, or an external secret operator. Set `backend.secrets.existingSecret` and match the configured key names when using an existing Secret.
 
+## Autoscaling
+
+Backend and frontend HPAs are controlled independently:
+
+```yaml
+backend:
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+frontend:
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+```
+
+When autoscaling is enabled, Helm does not render `spec.replicas` for that Deployment and the HPA owns replica count. Kubernetes metrics-server is required for CPU utilization metrics.
+
+## Pod Disruption Budgets
+
+Backend and frontend PDBs are disabled in development values and enabled in production values:
+
+```yaml
+backend:
+  pdb:
+    enabled: true
+    minAvailable: 2
+
+frontend:
+  pdb:
+    enabled: true
+    minAvailable: 2
+```
+
+Use a `minAvailable` value that fits the configured minimum replica count. A PDB cannot preserve availability if a workload only has one pod.
+
+## Network Policies
+
+NetworkPolicies are enabled by default in base values, disabled in `values-dev.yaml`, and enabled in `values-prod.yaml`.
+
+Rendered policies include:
+
+- default deny ingress and egress for AccessIQ pods
+- frontend HTTP ingress
+- frontend egress to backend
+- backend HTTP ingress
+- backend DNS egress
+- backend egress to internal PostgreSQL when the development database is enabled
+- backend egress to an external database when configured
+- optional backend HTTPS egress for provider APIs or external connectors
+- PostgreSQL ingress from backend only when internal PostgreSQL is enabled
+
+Production external database egress is intentionally configurable:
+
+```yaml
+networkPolicies:
+  backend:
+    externalDatabaseEgress:
+      enabled: true
+      cidr: 0.0.0.0/0
+      port: 5432
+```
+
+Replace `0.0.0.0/0` with the managed database CIDR or private network range for the target cluster.
+
+Ingress controller source restrictions are cluster-specific. The default policies allow HTTP ingress to backend and frontend pods so common Nginx, cloud load balancer, and local ingress-controller layouts keep working. Tighten ingress sources with cluster-specific selectors once the ingress controller namespace and pod labels are known.
+
+## Rolling Updates And Scheduling
+
+Backend and frontend Deployments use configurable RollingUpdate settings:
+
+```yaml
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+minReadySeconds: 10
+progressDeadlineSeconds: 600
+```
+
+Soft pod anti-affinity and topology spread constraints prefer distributing replicas across nodes while remaining compatible with one-node local clusters.
+
 ## PostgreSQL And PVC
 
 `database.internal.enabled=true` deploys a simple PostgreSQL container and PVC for development. This is useful for Docker Desktop, kind, and minikube validation.
@@ -169,6 +304,8 @@ database:
 ```
 
 Use a managed database or production-grade PostgreSQL deployment with backups, monitoring, upgrades, replication, and disaster recovery.
+
+When `database.internal.enabled=false`, configure `database.external.url` and the matching network policy egress values.
 
 ## Ingress
 
@@ -195,6 +332,32 @@ Default backend paths include:
 
 The default ingress class is `nginx`. Update `ingress.className`, `ingress.host`, annotations, and TLS values for the target cluster.
 
+## Production Values
+
+`values-prod.yaml` is a starting point for managed Kubernetes platforms:
+
+- internal PostgreSQL disabled
+- external PostgreSQL URL placeholder
+- backend and frontend replicas set for HA
+- HPAs enabled for backend and frontend
+- PDBs enabled for backend and frontend
+- NetworkPolicies enabled
+- production resource requests and limits
+- TLS ingress placeholder
+- production image repository placeholders under `ghcr.io/happelj`
+
+Before deploying production values, replace image tags, database URL, secrets, ingress host, TLS secret, and network policy CIDRs.
+
+## Troubleshooting
+
+- `ImagePullBackOff`: build and tag local images for Docker Desktop, or push images to a registry reachable by the cluster.
+- HPA `TARGETS <unknown>`: install metrics-server or disable autoscaling in local values.
+- Pods fail with non-root errors: rebuild images after the Dockerfile hardening changes.
+- Frontend readiness fails: confirm the image listens on container port `8080` and the Service targets the named `http` port.
+- Read-only filesystem errors: add a specific `emptyDir` mount for the path that needs runtime writes; do not disable read-only root filesystem unless necessary.
+- Backend database connection errors: verify `DATABASE_URL`, the database Secret, and NetworkPolicy egress to PostgreSQL.
+- Ingress not routing: verify ingress controller installation, `ingress.className`, DNS or hosts file entries, and host/path rules.
+
 ## Future Production Roadmap
 
 Future milestones can add:
@@ -203,9 +366,6 @@ Future milestones can add:
 - runtime frontend configuration
 - Kubernetes readiness for external managed PostgreSQL
 - migrations as Jobs
-- horizontal pod autoscaling
-- network policies
-- pod disruption budgets
 - external secret integration
 - AWS EKS-specific values
 - GitOps deployment automation

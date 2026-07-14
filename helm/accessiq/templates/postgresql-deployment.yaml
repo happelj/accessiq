@@ -26,10 +26,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.database.internal.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: postgresql
           image: "{{ .Values.database.internal.image.repository }}:{{ .Values.database.internal.image.tag }}"
           imagePullPolicy: {{ .Values.database.internal.image.pullPolicy }}
+          {{- with .Values.database.internal.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: postgresql
               containerPort: {{ .Values.database.internal.service.port }}

@@ -7,7 +7,17 @@ metadata:
     {{- include "accessiq.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
+  {{- if not .Values.frontend.autoscaling.enabled }}
   replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  strategy:
+    type: {{ .Values.frontend.deploymentStrategy.type }}
+    {{- with .Values.frontend.deploymentStrategy.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  minReadySeconds: {{ .Values.frontend.minReadySeconds }}
+  progressDeadlineSeconds: {{ .Values.frontend.progressDeadlineSeconds }}
   selector:
     matchLabels:
       {{- include "accessiq.selectorLabels" . | nindent 6 }}
@@ -30,10 +40,45 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.frontend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.frontend.affinity.podAntiAffinity.enabled .Values.frontend.affinity.additionalAffinity }}
+      affinity:
+        {{- if .Values.frontend.affinity.podAntiAffinity.enabled }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ .Values.frontend.affinity.podAntiAffinity.weight }}
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "accessiq.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: frontend
+                topologyKey: {{ .Values.frontend.affinity.podAntiAffinity.topologyKey }}
+        {{- end }}
+        {{- with .Values.frontend.affinity.additionalAffinity }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.frontend.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.frontend.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ .Values.frontend.topologySpreadConstraints.topologyKey }}
+          whenUnsatisfiable: {{ .Values.frontend.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "accessiq.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: frontend
+      {{- end }}
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          {{- with .Values.frontend.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.frontend.containerPort }}
@@ -73,4 +118,31 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
-
+          {{- if or .Values.frontend.tmpVolume.enabled .Values.frontend.cacheVolume.enabled }}
+          volumeMounts:
+            {{- if .Values.frontend.tmpVolume.enabled }}
+            - name: frontend-tmp
+              mountPath: /tmp
+            {{- end }}
+            {{- if .Values.frontend.cacheVolume.enabled }}
+            - name: frontend-cache
+              mountPath: /var/cache/nginx
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.frontend.tmpVolume.enabled .Values.frontend.cacheVolume.enabled }}
+      volumes:
+        {{- if .Values.frontend.tmpVolume.enabled }}
+        - name: frontend-tmp
+          emptyDir:
+            {{- with .Values.frontend.tmpVolume.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+        {{- end }}
+        {{- if .Values.frontend.cacheVolume.enabled }}
+        - name: frontend-cache
+          emptyDir:
+            {{- with .Values.frontend.cacheVolume.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+        {{- end }}
+      {{- end }}

@@ -165,13 +165,14 @@ The CI workflow does not require GitHub secrets and does not deploy or publish i
 
 ## Kubernetes And Helm
 
-AccessIQ includes a Helm chart at `helm/accessiq` for portable Kubernetes deployment. The chart renders the backend, frontend, optional development PostgreSQL, Services, ConfigMaps, Secrets, PVC, ServiceAccount, health probes, resource limits, and Ingress resources.
+AccessIQ includes a Helm chart at `helm/accessiq` for portable Kubernetes deployment. The chart renders the backend, frontend, optional development PostgreSQL, Services, ConfigMaps, Secrets, PVC, ServiceAccount, health probes, resource limits, security contexts, rolling update controls, optional HPAs, optional PDBs, optional NetworkPolicies, and Ingress resources.
 
 Validate the chart locally:
 
 ```bash
 helm lint helm/accessiq
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml
+helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml | kubectl apply --dry-run=client -f -
 ```
 
@@ -184,7 +185,7 @@ helm upgrade --install accessiq helm/accessiq \
   -f helm/accessiq/values-dev.yaml
 ```
 
-The bundled PostgreSQL deployment is for development only. Production deployments should use a managed database or production-grade PostgreSQL deployment. See [Kubernetes and Helm](docs/kubernetes.md) for values, secrets, ingress, upgrade, and rollback guidance.
+The bundled PostgreSQL deployment is for development only. Production deployments should use a managed database or production-grade PostgreSQL deployment. Production values enable autoscaling, disruption budgets, NetworkPolicies, non-root containers, read-only root filesystems, and TLS ingress placeholders. CPU-based HPA behavior requires metrics-server. See [Kubernetes and Helm](docs/kubernetes.md) for values, secrets, ingress, upgrade, rollback, hardening, and troubleshooting guidance.
 
 ## Operations And Observability
 
