@@ -11,7 +11,8 @@ The workflow lives at `.github/workflows/ci.yml` and runs four jobs:
 1. `backend-quality`: Python dependency install, Ruff linting, Black format check, MyPy type checking, and the full backend pytest suite against PostgreSQL.
 2. `frontend-quality`: Node dependency install, ESLint, Prettier format check, TypeScript validation, Vitest, and Vite production build.
 3. `docker-build`: backend Docker image build and frontend Docker image build. Images are local to the CI runner and are not pushed.
-4. `dependency-security`: Python dependency audit through `pip-audit` and JavaScript dependency audit through `npm audit`.
+4. `kubernetes-quality`: Helm linting, dev/prod manifest rendering, and kubectl client-side dry-run validation against a disposable kind cluster.
+5. `dependency-security`: Python dependency audit through `pip-audit` and JavaScript dependency audit through `npm audit`.
 
 The workflow triggers on:
 
@@ -36,6 +37,7 @@ Checkout
   -> Frontend tests
   -> Frontend production build
   -> Docker build validation
+  -> Kubernetes manifest validation
   -> Dependency security scan
   -> Success
 ```
@@ -75,6 +77,14 @@ docker build -t accessiq-api:ci .
 docker build -t accessiq-frontend:ci frontend
 ```
 
+Kubernetes validation:
+
+```bash
+helm lint helm/accessiq
+helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml
+helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml | kubectl apply --dry-run=client -f -
+```
+
 ## Tooling
 
 Python tools are configured in `pyproject.toml`:
@@ -112,7 +122,7 @@ For `main`, enable branch protection with:
 
 - Require pull request before merging
 - Require status checks to pass before merging
-- Require the CI workflow jobs: backend quality, frontend quality, Docker build validation, and dependency security
+- Require the CI workflow jobs: backend quality, frontend quality, Docker build validation, Kubernetes and Helm validation, and dependency security
 - Require branches to be up to date before merging
 - Restrict force pushes
 

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: accessiq
+description: A Helm chart for deploying AccessIQ on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - accessiq
+  - identity
+  - access-governance
+home: https://github.com/happelj/accessiq
+maintainers:
+  - name: AccessIQ Maintainers
+

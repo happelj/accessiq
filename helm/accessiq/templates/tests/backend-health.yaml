@@ -1,0 +1,23 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "accessiq.fullname" . }}-backend-health-test
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: "{{ .Values.tests.image.repository }}:{{ .Values.tests.image.tag }}"
+      imagePullPolicy: {{ .Values.tests.image.pullPolicy }}
+      command:
+        - sh
+        - -c
+        - curl -fsS "http://{{ include "accessiq.backendName" . }}:{{ .Values.backend.service.port }}/health"
+{{- end }}
+

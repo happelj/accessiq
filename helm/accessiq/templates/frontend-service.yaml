@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "accessiq.frontendName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.frontend.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "accessiq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+

@@ -1,0 +1,97 @@
+{{- if .Values.database.internal.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "accessiq.postgresqlName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "accessiq.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "accessiq.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      serviceAccountName: {{ include "accessiq.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: "{{ .Values.database.internal.image.repository }}:{{ .Values.database.internal.image.tag }}"
+          imagePullPolicy: {{ .Values.database.internal.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: {{ .Values.database.internal.service.port }}
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.database.internal.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.database.internal.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "accessiq.postgresqlSecretName" . }}
+                  key: {{ .Values.database.internal.auth.passwordKey }}
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+          {{- if .Values.database.internal.startupProbe.enabled }}
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: {{ .Values.database.internal.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.database.internal.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.database.internal.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.database.internal.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.database.internal.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: {{ .Values.database.internal.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.database.internal.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.database.internal.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.database.internal.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.database.internal.livenessProbe.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: {{ .Values.database.internal.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.database.internal.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.database.internal.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.database.internal.livenessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.database.internal.resources | nindent 12 }}
+      volumes:
+        - name: postgresql-data
+          {{- if .Values.database.internal.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "accessiq.postgresqlName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}
+

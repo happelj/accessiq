@@ -1,0 +1,21 @@
+{{- if .Values.database.internal.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "accessiq.postgresqlName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: {{ .Values.database.internal.service.type }}
+  ports:
+    - name: postgresql
+      port: {{ .Values.database.internal.service.port }}
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "accessiq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+{{- end }}
+

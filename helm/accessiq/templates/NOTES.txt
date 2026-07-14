@@ -1,0 +1,19 @@
+AccessIQ has been rendered for namespace {{ include "accessiq.namespace" . }}.
+
+Frontend service:
+  {{ include "accessiq.frontendName" . }}:{{ .Values.frontend.service.port }}
+
+Backend service:
+  {{ include "accessiq.backendName" . }}:{{ .Values.backend.service.port }}
+
+{{- if .Values.ingress.enabled }}
+Ingress host:
+  http://{{ .Values.ingress.host }}
+
+Swagger UI:
+  http://{{ .Values.ingress.host }}/docs
+{{- end }}
+
+To run the Helm test after deployment:
+  helm test {{ .Release.Name }} --namespace {{ include "accessiq.namespace" . }}
+

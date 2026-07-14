@@ -1,0 +1,240 @@
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: true
+  name: accessiq
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+imagePullSecrets: []
+
+backend:
+  replicaCount: 1
+  image:
+    repository: accessiq-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  containerPort: 8000
+  service:
+    type: ClusterIP
+    port: 8000
+  podAnnotations: {}
+  podLabels: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  startupProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 18
+  readinessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  livenessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  config:
+    jwtAlgorithm: HS256
+    accessTokenExpireMinutes: "30"
+    aiEnabled: "true"
+    llmProvider: mock
+    aiTimeout: "30"
+    aiMaxTokens: "1200"
+    openaiModel: gpt-4.1-mini
+    anthropicModel: claude-3-5-sonnet-latest
+    corsAllowedOrigins: http://localhost:5173,http://127.0.0.1:5173
+    corsAllowCredentials: "true"
+    accessiqLoggerName: accessiq
+    accessiqLogLevel: INFO
+    connectors:
+      salesforce:
+        enabled: "true"
+        apiBaseUrl: ""
+      github:
+        enabled: "true"
+        apiBaseUrl: ""
+      zendesk:
+        enabled: "true"
+        apiBaseUrl: ""
+      finance:
+        enabled: "true"
+        apiBaseUrl: ""
+  secrets:
+    existingSecret: ""
+    keys:
+      databaseUrl: DATABASE_URL
+      jwtSecret: JWT_SECRET
+      openaiApiKey: OPENAI_API_KEY
+      anthropicApiKey: ANTHROPIC_API_KEY
+    jwtSecret: change-me-minimum-32-bytes-placeholder
+    openaiApiKey: ""
+    anthropicApiKey: ""
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: accessiq-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  containerPort: 80
+  apiBaseUrl: http://localhost:8000
+  service:
+    type: ClusterIP
+    port: 80
+  podAnnotations: {}
+  podLabels: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  startupProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 12
+  readinessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  livenessProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+database:
+  external:
+    url: ""
+  internal:
+    enabled: true
+    image:
+      repository: postgres
+      tag: 16-alpine
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 5432
+    auth:
+      database: accessiq
+      username: accessiq
+      password: accessiq-dev-password
+      existingSecret: ""
+      passwordKey: POSTGRES_PASSWORD
+    persistence:
+      enabled: true
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
+      storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    startupProbe:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 18
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+ingress:
+  enabled: true
+  className: nginx
+  host: accessiq.local
+  annotations: {}
+  tls: []
+  frontend:
+    annotations: {}
+    paths:
+      - path: /
+        pathType: Prefix
+  backend:
+    annotations: {}
+    paths:
+      - path: /health
+        pathType: Prefix
+      - path: /docs
+        pathType: Prefix
+      - path: /redoc
+        pathType: Prefix
+      - path: /openapi.json
+        pathType: Exact
+      - path: /login
+        pathType: Prefix
+      - path: /users
+        pathType: Prefix
+      - path: /applications
+        pathType: Prefix
+      - path: /access
+        pathType: Prefix
+      - path: /audit-events
+        pathType: Prefix
+      - path: /scim
+        pathType: Prefix
+      - path: /connectors
+        pathType: Prefix
+      - path: /provisioning
+        pathType: Prefix
+      - path: /access-reviews
+        pathType: Prefix
+      - path: /remediation
+        pathType: Prefix
+      - path: /delegation
+        pathType: Prefix
+      - path: /graph
+        pathType: Prefix
+      - path: /ai
+        pathType: Prefix
+
+tests:
+  enabled: true
+  image:
+    repository: curlimages/curl
+    tag: 8.10.1
+    pullPolicy: IfNotPresent
+

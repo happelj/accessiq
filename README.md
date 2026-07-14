@@ -59,6 +59,7 @@ npm run build
 - [Architecture](docs/architecture.md)
 - [Frontend architecture](docs/frontend.md)
 - [CI/CD quality gates](docs/ci-cd.md)
+- [Kubernetes and Helm](docs/kubernetes.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
@@ -123,7 +124,7 @@ Initial pages include dashboard, users, applications, groups, access assignments
 
 ## CI/CD
 
-AccessIQ uses GitHub Actions for pull request and `main` branch validation. The workflow runs backend linting, Python formatting checks, MyPy, the full backend test suite, frontend ESLint, Prettier checks, TypeScript validation, Vitest, frontend production build, Docker build validation, and dependency security scans.
+AccessIQ uses GitHub Actions for pull request and `main` branch validation. The workflow runs backend linting, Python formatting checks, MyPy, the full backend test suite, frontend ESLint, Prettier checks, TypeScript validation, Vitest, frontend production build, Docker build validation, Kubernetes and Helm validation, and dependency security scans.
 
 Run the same core checks locally:
 
@@ -153,6 +154,29 @@ docker build -t accessiq-frontend:ci frontend
 ```
 
 The CI workflow does not require GitHub secrets and does not deploy or publish images. See [CI/CD quality gates](docs/ci-cd.md) for branch protection recommendations and troubleshooting.
+
+## Kubernetes And Helm
+
+AccessIQ includes a Helm chart at `helm/accessiq` for portable Kubernetes deployment. The chart renders the backend, frontend, optional development PostgreSQL, Services, ConfigMaps, Secrets, PVC, ServiceAccount, health probes, resource limits, and Ingress resources.
+
+Validate the chart locally:
+
+```bash
+helm lint helm/accessiq
+helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml
+helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml | kubectl apply --dry-run=client -f -
+```
+
+Install on a local Kubernetes cluster:
+
+```bash
+helm upgrade --install accessiq helm/accessiq \
+  --namespace accessiq-dev \
+  --create-namespace \
+  -f helm/accessiq/values-dev.yaml
+```
+
+The bundled PostgreSQL deployment is for development only. Production deployments should use a managed database or production-grade PostgreSQL deployment. See [Kubernetes and Helm](docs/kubernetes.md) for values, secrets, ingress, upgrade, and rollback guidance.
 
 ## Operations And Observability
 
