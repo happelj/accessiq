@@ -1,0 +1,12 @@
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+node_modules/
+dist/
+coverage/
+*.swp
+*.tmp
+

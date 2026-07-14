@@ -1,0 +1,20 @@
+{{- if and .Values.database.internal.enabled .Values.database.internal.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "accessiq.postgresqlName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  accessModes:
+    {{- toYaml .Values.database.internal.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.database.internal.persistence.size }}
+  {{- if .Values.database.internal.persistence.storageClassName }}
+  storageClassName: {{ .Values.database.internal.persistence.storageClassName | quote }}
+  {{- end }}
+{{- end }}
+

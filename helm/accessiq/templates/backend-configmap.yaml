@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "accessiq.backendConfigMapName" . }}
+  namespace: {{ include "accessiq.namespace" . }}
+  labels:
+    {{- include "accessiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  JWT_ALGORITHM: {{ .Values.backend.config.jwtAlgorithm | quote }}
+  ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.backend.config.accessTokenExpireMinutes | quote }}
+  AI_ENABLED: {{ .Values.backend.config.aiEnabled | quote }}
+  LLM_PROVIDER: {{ .Values.backend.config.llmProvider | quote }}
+  AI_TIMEOUT: {{ .Values.backend.config.aiTimeout | quote }}
+  AI_MAX_TOKENS: {{ .Values.backend.config.aiMaxTokens | quote }}
+  OPENAI_MODEL: {{ .Values.backend.config.openaiModel | quote }}
+  ANTHROPIC_MODEL: {{ .Values.backend.config.anthropicModel | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.backend.config.corsAllowedOrigins | quote }}
+  CORS_ALLOW_CREDENTIALS: {{ .Values.backend.config.corsAllowCredentials | quote }}
+  ACCESSIQ_LOGGER_NAME: {{ .Values.backend.config.accessiqLoggerName | quote }}
+  ACCESSIQ_LOG_LEVEL: {{ .Values.backend.config.accessiqLogLevel | quote }}
+  ENABLE_SALESFORCE_CONNECTOR: {{ .Values.backend.config.connectors.salesforce.enabled | quote }}
+  ENABLE_GITHUB_CONNECTOR: {{ .Values.backend.config.connectors.github.enabled | quote }}
+  ENABLE_ZENDESK_CONNECTOR: {{ .Values.backend.config.connectors.zendesk.enabled | quote }}
+  ENABLE_FINANCE_CONNECTOR: {{ .Values.backend.config.connectors.finance.enabled | quote }}
+  SALESFORCE_API_BASE_URL: {{ .Values.backend.config.connectors.salesforce.apiBaseUrl | quote }}
+  GITHUB_API_BASE_URL: {{ .Values.backend.config.connectors.github.apiBaseUrl | quote }}
+  ZENDESK_API_BASE_URL: {{ .Values.backend.config.connectors.zendesk.apiBaseUrl | quote }}
+  FINANCE_API_BASE_URL: {{ .Values.backend.config.connectors.finance.apiBaseUrl | quote }}
+

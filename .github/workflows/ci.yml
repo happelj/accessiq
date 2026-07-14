@@ -133,6 +133,45 @@ jobs:
       - name: Build frontend image
         run: docker build --pull -t accessiq-frontend:ci frontend
 
+  kubernetes-quality:
+    name: Kubernetes and Helm validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+
+      - name: Set up kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: accessiq-ci
+          wait: 60s
+
+      - name: Helm lint
+        run: helm lint helm/accessiq
+
+      - name: Render development manifests
+        run: helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml > rendered-dev.yaml
+
+      - name: Validate development manifests
+        run: kubectl apply --dry-run=client -f rendered-dev.yaml
+
+      - name: Render production manifests
+        run: helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml > rendered-prod.yaml
+
+      - name: Validate production manifests
+        run: kubectl apply --dry-run=client -f rendered-prod.yaml
+
   dependency-security:
     name: Dependency security scan
     runs-on: ubuntu-latest

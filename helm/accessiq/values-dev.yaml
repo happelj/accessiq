@@ -1,0 +1,38 @@
+namespace:
+  create: true
+  name: accessiq-dev
+
+backend:
+  replicaCount: 1
+  image:
+    repository: accessiq-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  config:
+    corsAllowedOrigins: http://localhost:5173,http://127.0.0.1:5173,http://accessiq.local
+  secrets:
+    jwtSecret: dev-accessiq-change-me-minimum-32-bytes
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: accessiq-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  apiBaseUrl: http://accessiq.local
+
+database:
+  internal:
+    enabled: true
+    auth:
+      database: accessiq
+      username: accessiq
+      password: accessiq-dev-password
+    persistence:
+      size: 1Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: accessiq.local
+
