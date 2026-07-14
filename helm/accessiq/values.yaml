@@ -25,6 +25,48 @@ backend:
     port: 8000
   podAnnotations: {}
   podLabels: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  tmpVolume:
+    enabled: true
+    sizeLimit: 64Mi
+  deploymentStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: false
+    minAvailable: 1
+  affinity:
+    podAntiAffinity:
+      enabled: true
+      weight: 50
+      topologyKey: kubernetes.io/hostname
+    additionalAffinity: {}
+  topologySpreadConstraints:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   resources:
     requests:
       cpu: 100m
@@ -96,13 +138,58 @@ frontend:
     repository: accessiq-frontend
     tag: latest
     pullPolicy: IfNotPresent
-  containerPort: 80
+  containerPort: 8080
   apiBaseUrl: http://localhost:8000
   service:
     type: ClusterIP
     port: 80
   podAnnotations: {}
   podLabels: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  tmpVolume:
+    enabled: true
+    sizeLimit: 64Mi
+  cacheVolume:
+    enabled: true
+    sizeLimit: 64Mi
+  deploymentStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: false
+    minAvailable: 1
+  affinity:
+    podAntiAffinity:
+      enabled: true
+      weight: 50
+      topologyKey: kubernetes.io/hostname
+    additionalAffinity: {}
+  topologySpreadConstraints:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   resources:
     requests:
       cpu: 50m
@@ -181,6 +268,12 @@ database:
       periodSeconds: 20
       timeoutSeconds: 5
       failureThreshold: 3
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false
 
 ingress:
   enabled: true
@@ -230,6 +323,32 @@ ingress:
         pathType: Prefix
       - path: /ai
         pathType: Prefix
+
+networkPolicies:
+  enabled: true
+  defaultDeny:
+    enabled: true
+  dnsEgress:
+    enabled: true
+  backend:
+    allowPostgresqlEgress: true
+    externalDatabaseEgress:
+      enabled: false
+      cidr: 0.0.0.0/0
+      except: []
+      port: 5432
+      protocol: TCP
+    externalEgress:
+      enabled: false
+      cidr: 0.0.0.0/0
+      except: []
+      ports:
+        - port: 443
+          protocol: TCP
+  frontend:
+    allowBackendEgress: true
+  postgresql:
+    allowBackendIngress: true
 
 tests:
   enabled: true
