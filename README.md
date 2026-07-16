@@ -68,6 +68,7 @@ npm run build
 - [Frontend architecture](docs/frontend.md)
 - [CI/CD quality gates](docs/ci-cd.md)
 - [Kubernetes and Helm](docs/kubernetes.md)
+- [AWS infrastructure](docs/aws.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
@@ -186,6 +187,22 @@ helm upgrade --install accessiq helm/accessiq \
 ```
 
 The bundled PostgreSQL deployment is for development only. Production deployments should use a managed database or production-grade PostgreSQL deployment. Production values enable autoscaling, disruption budgets, NetworkPolicies, non-root containers, read-only root filesystems, and TLS ingress placeholders. CPU-based HPA behavior requires metrics-server. See [Kubernetes and Helm](docs/kubernetes.md) for values, secrets, ingress, upgrade, rollback, hardening, and troubleshooting guidance.
+
+## AWS Infrastructure
+
+AccessIQ includes Terraform infrastructure under `infrastructure/terraform` for a future AWS deployment path. The Terraform creates reusable AWS foundations for VPC networking, EKS, managed node groups, private PostgreSQL RDS, ECR repositories, IAM roles, and Secrets Manager placeholders.
+
+Validate an environment from its directory:
+
+```bash
+cd infrastructure/terraform/environments/dev
+terraform init
+terraform fmt -recursive ../..
+terraform validate
+terraform plan
+```
+
+This infrastructure milestone does not deploy AccessIQ to AWS, push Docker images, or configure GitHub Actions deployment. See [AWS infrastructure](docs/aws.md) for architecture, module details, costs, and cleanup guidance.
 
 ## Operations And Observability
 

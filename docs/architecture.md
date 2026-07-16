@@ -533,3 +533,31 @@ flowchart TD
 ```
 
 The policy engine, graph, provisioning services, reviews, and remediation services remain deterministic and authoritative.
+
+## AWS Infrastructure Foundation
+
+Milestone 15A adds an AWS Infrastructure as Code foundation under `infrastructure/terraform`. The Terraform layer is intentionally separate from application code and Helm runtime configuration.
+
+```mermaid
+flowchart TD
+    Terraform["Terraform Environments"]
+    Modules["Reusable Modules"]
+    Network["VPC, Subnets, NAT"]
+    EKS["EKS and Managed Nodes"]
+    RDS["Private PostgreSQL RDS"]
+    ECR["Backend and Frontend ECR"]
+    IAM["IAM Roles and Policies"]
+    Secrets["Secrets Manager"]
+    Helm["Existing Helm Chart"]
+
+    Terraform --> Modules
+    Modules --> Network
+    Modules --> EKS
+    Modules --> RDS
+    Modules --> ECR
+    Modules --> IAM
+    Modules --> Secrets
+    Helm -. "future deployment milestone" .-> EKS
+```
+
+The AWS layer provisions infrastructure only. It does not deploy AccessIQ to EKS, push container images, or configure GitHub Actions deployment. Future deployment work can consume the Terraform outputs for cluster name, subnet IDs, ECR repository URLs, RDS endpoint, IAM role ARNs, and Secrets Manager ARNs while preserving the existing local Kubernetes workflow.
