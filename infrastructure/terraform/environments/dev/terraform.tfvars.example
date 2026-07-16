@@ -1,0 +1,9 @@
+aws_region      = "us-east-1"
+project_name    = "accessiq"
+environment     = "dev"
+cluster_version = "1.29"
+
+# Enable only when ready to configure GitHub Actions OIDC.
+enable_github_actions_oidc = false
+github_repositories        = ["happelj/accessiq"]
+github_oidc_thumbprints    = []
