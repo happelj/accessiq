@@ -6,6 +6,7 @@ from time import perf_counter
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -43,7 +44,17 @@ from .models import (
     ReleaseDeployment,
     User,
 )
-from .observability import configure_logging, log_event, metrics_registry
+from .observability import (
+    PROMETHEUS_CONTENT_TYPE,
+    configure_logging,
+    configure_tracing,
+    log_event,
+    metrics_registry,
+    record_authentication,
+    record_http_request,
+    record_policy_denial,
+    trace_span,
+)
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .provisioning.routes import router as provisioning_router
 from .releases.routes import router as releases_router
@@ -557,6 +568,7 @@ app.include_router(delegation_router)
 app.include_router(graph_router)
 app.include_router(ai_router)
 app.include_router(releases_router)
+configure_tracing(app=app, sqlalchemy_engine=engine)
 
 
 @app.middleware("http")
@@ -567,33 +579,51 @@ async def request_context_middleware(request: Request, call_next):
     metrics_registry.increment("http_requests_total")
 
     try:
-        try:
-            initialize_database()
-            response = await call_next(request)
-        except Exception:
-            metrics_registry.increment("http_request_errors_total")
-            log_event(
-                "http_request",
-                status="error",
-                level=logging.ERROR,
+        with trace_span(
+            "http.request",
+            http_method=request.method,
+            http_target=request.url.path,
+        ):
+            try:
+                initialize_database()
+                response = await call_next(request)
+            except Exception:
+                duration_seconds = perf_counter() - started_at
+                metrics_registry.increment("http_request_errors_total")
+                record_http_request(
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=500,
+                    duration_seconds=duration_seconds,
+                )
+                log_event(
+                    "http_request",
+                    status="error",
+                    level=logging.ERROR,
+                    method=request.method,
+                    path=request.url.path,
+                    duration_ms=round(duration_seconds * 1000, 3),
+                )
+                raise
+
+            duration_seconds = perf_counter() - started_at
+            response.headers[CORRELATION_ID_HEADER] = context.correlation_id
+            if response.status_code >= 400:
+                metrics_registry.increment("http_request_errors_total")
+            record_http_request(
                 method=request.method,
                 path=request.url.path,
-                duration_ms=round((perf_counter() - started_at) * 1000, 3),
+                status_code=response.status_code,
+                duration_seconds=duration_seconds,
             )
-            raise
-
-        response.headers[CORRELATION_ID_HEADER] = context.correlation_id
-        if response.status_code >= 400:
-            metrics_registry.increment("http_request_errors_total")
-
-        log_event(
-            "http_request",
-            status="succeeded" if response.status_code < 500 else "failed",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            duration_ms=round((perf_counter() - started_at) * 1000, 3),
-        )
+            log_event(
+                "http_request",
+                status="succeeded" if response.status_code < 500 else "failed",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=round(duration_seconds * 1000, 3),
+            )
 
         return response
     finally:
@@ -611,6 +641,20 @@ def read_root() -> dict[str, str]:
         "service": "AccessIQ",
         "documentation": "/docs",
     }
+
+
+@app.get(
+    "/metrics",
+    response_class=PlainTextResponse,
+    tags=["Observability"],
+    summary="Export Prometheus metrics",
+    description="Returns in-process AccessIQ metrics in Prometheus text format.",
+)
+def read_metrics() -> PlainTextResponse:
+    return PlainTextResponse(
+        metrics_registry.render_prometheus(),
+        media_type=PROMETHEUS_CONTENT_TYPE,
+    )
 
 
 @app.get(
@@ -651,6 +695,7 @@ def login(
         credentials.password,
         user.password_hash,
     ):
+        record_authentication("failed")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -659,6 +704,8 @@ def login(
 
     settings = get_auth_settings()
     access_token = create_access_token(subject=str(user.id))
+    record_authentication("succeeded")
+    log_event("authentication", status="succeeded", user_id=user.id)
 
     return TokenResponse(
         access_token=access_token,
@@ -918,6 +965,7 @@ def grant_access(
     )
 
     if not policy_decision.allowed:
+        record_policy_denial(action="grant")
         try:
             _record_delegated_denial(
                 delegation_service,
@@ -1112,6 +1160,7 @@ def revoke_access(
     )
 
     if not policy_decision.allowed:
+        record_policy_denial(action="revoke")
         try:
             _record_delegated_denial(
                 delegation_service,

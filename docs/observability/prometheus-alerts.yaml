@@ -1,0 +1,70 @@
+groups:
+  - name: accessiq.rules
+    rules:
+      - alert: AccessIQHigh5xxRate
+        expr: |
+          sum(rate(accessiq_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(accessiq_http_requests_total[5m])), 1)
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: accessiq
+        annotations:
+          summary: AccessIQ 5xx rate is above 5%
+          description: More than 5% of AccessIQ HTTP requests are returning 5xx.
+
+      - alert: AccessIQHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(accessiq_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: accessiq
+        annotations:
+          summary: AccessIQ p95 latency is above 1 second
+          description: AccessIQ HTTP p95 latency has exceeded 1 second.
+
+      - alert: AccessIQConnectorFailures
+        expr: sum(rate(accessiq_connector_failures_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: accessiq
+        annotations:
+          summary: AccessIQ connector failures detected
+          description: One or more connector operations are failing.
+
+      - alert: AccessIQProvisioningFailures
+        expr: sum(rate(accessiq_provisioning_jobs_total{status=~"FAILED|RETRYABLE"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: accessiq
+        annotations:
+          summary: AccessIQ provisioning failures detected
+          description: Provisioning jobs are failing or entering retryable status.
+
+      - alert: AccessIQAIFailures
+        expr: sum(rate(accessiq_ai_provider_requests_total{status!="succeeded"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: accessiq
+        annotations:
+          summary: AccessIQ AI provider failures detected
+          description: AI provider calls are timing out, rate limited, unavailable, or failing.
+
+      - alert: AccessIQPolicyDenialsSpike
+        expr: sum(rate(accessiq_policy_denials_total[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: info
+          service: accessiq
+        annotations:
+          summary: AccessIQ policy denials increased
+          description: Business policy denials are elevated and should be reviewed.

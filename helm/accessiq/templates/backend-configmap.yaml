@@ -19,6 +19,10 @@ data:
   CORS_ALLOW_CREDENTIALS: {{ .Values.backend.config.corsAllowCredentials | quote }}
   ACCESSIQ_LOGGER_NAME: {{ .Values.backend.config.accessiqLoggerName | quote }}
   ACCESSIQ_LOG_LEVEL: {{ .Values.backend.config.accessiqLogLevel | quote }}
+  ACCESSIQ_METRICS_ENABLED: {{ .Values.backend.config.accessiqMetricsEnabled | quote }}
+  ACCESSIQ_TRACING_ENABLED: {{ .Values.backend.config.accessiqTracingEnabled | quote }}
+  OTEL_SERVICE_NAME: {{ .Values.backend.config.otelServiceName | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.backend.config.otelExporterOtlpEndpoint | quote }}
   ENABLE_SALESFORCE_CONNECTOR: {{ .Values.backend.config.connectors.salesforce.enabled | quote }}
   ENABLE_GITHUB_CONNECTOR: {{ .Values.backend.config.connectors.github.enabled | quote }}
   ENABLE_ZENDESK_CONNECTOR: {{ .Values.backend.config.connectors.zendesk.enabled | quote }}

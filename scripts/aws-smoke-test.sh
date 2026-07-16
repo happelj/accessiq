@@ -14,6 +14,9 @@ echo "health endpoint ok"
 curl --fail --silent --show-error "${BASE_URL}/version" >/dev/null
 echo "version endpoint ok"
 
+curl --fail --silent --show-error "${BASE_URL}/metrics" >/dev/null
+echo "metrics endpoint ok"
+
 curl --fail --silent --show-error "${BASE_URL}/" >/dev/null
 echo "frontend root ok"
 

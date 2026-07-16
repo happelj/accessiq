@@ -11,6 +11,7 @@ from .models import (
     AIExplanationResponse,
     AIExplanationTiming,
 )
+from ..observability import metrics_registry, trace_span
 from .prompt import build_prompt
 from .providers import LLMProvider
 from .providers.base import (
@@ -63,28 +64,36 @@ class AIExplanationService:
 
     def explain(self, request: AIExplainRequest) -> AIExplanationResponse:
         started = perf_counter()
-        context = self.assembler.assemble(request)
+        with trace_span("ai.context_assemble"):
+            context = self.assembler.assemble(request)
         context_ms = _elapsed_ms(started)
         prompt = build_prompt(context)
         provider = self._resolve_provider(request.provider)
+        provider_name = provider.provider_name()
         provider_started = perf_counter()
 
         try:
-            result = provider.generate(
-                prompt,
-                timeout_seconds=self.settings.timeout_seconds,
-                max_tokens=min(request.max_tokens, self.settings.max_tokens),
-            )
+            with trace_span("ai.provider.generate", provider=provider_name):
+                result = provider.generate(
+                    prompt,
+                    timeout_seconds=self.settings.timeout_seconds,
+                    max_tokens=min(request.max_tokens, self.settings.max_tokens),
+                )
         except (ProviderConfigurationError, ProviderUnavailableError) as exc:
+            _record_ai_provider_result(provider_name, "unavailable", provider_started)
             raise AIProviderUnavailableError(str(exc)) from exc
         except ProviderTimeoutError as exc:
+            _record_ai_provider_result(provider_name, "timeout", provider_started)
             raise AIProviderTimeoutError(str(exc)) from exc
         except ProviderRateLimitError as exc:
+            _record_ai_provider_result(provider_name, "rate_limited", provider_started)
             raise AIProviderRateLimitError(str(exc)) from exc
         except ProviderFailureError as exc:
+            _record_ai_provider_result(provider_name, "failed", provider_started)
             raise AIProviderFailureError(str(exc)) from exc
 
         provider_ms = _elapsed_ms(provider_started)
+        _record_ai_provider_result(provider_name, "succeeded", provider_started)
         return AIExplanationResponse(
             answer=result.answer,
             citations=result.citations or context.citations,
@@ -143,3 +152,22 @@ class AIExplanationService:
 
 def _elapsed_ms(started: float) -> float:
     return round((perf_counter() - started) * 1000, 3)
+
+
+def _record_ai_provider_result(
+    provider_name: str,
+    status: str,
+    started: float,
+) -> None:
+    duration_seconds = perf_counter() - started
+    metrics_registry.increment(
+        "accessiq_ai_provider_requests_total",
+        labels={"provider": provider_name, "status": status},
+        description="AI provider requests grouped by provider and status.",
+    )
+    metrics_registry.observe(
+        "accessiq_ai_provider_duration_seconds",
+        duration_seconds,
+        labels={"provider": provider_name, "status": status},
+        description="AI provider request duration in seconds.",
+    )

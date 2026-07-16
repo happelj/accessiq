@@ -184,6 +184,14 @@ class RemediationService:
             reason=f"Remediation job {job.id} created",
         )
         metrics_registry.increment("remediation_jobs_total")
+        metrics_registry.increment(
+            "accessiq_remediation_jobs_total",
+            labels={
+                "remediation_type": job.remediation_type,
+                "status": job.status,
+            },
+            description="Remediation jobs grouped by type and lifecycle status.",
+        )
         self.pending_events.append(
             RemediationCreated(
                 occurred_at=event_time(),
@@ -256,6 +264,13 @@ class RemediationService:
                 correlation_id=job.correlation_id,
             )
         )
+        metrics_registry.increment(
+            "accessiq_remediation_jobs_total",
+            labels={
+                "remediation_type": job.remediation_type,
+                "status": job.status,
+            },
+        )
 
         return job
 
@@ -290,6 +305,13 @@ class RemediationService:
                 correlation_id=job.correlation_id,
             )
         )
+        metrics_registry.increment(
+            "accessiq_remediation_jobs_total",
+            labels={
+                "remediation_type": job.remediation_type,
+                "status": job.status,
+            },
+        )
 
         return job
 
@@ -322,6 +344,13 @@ class RemediationService:
                 message=message,
                 correlation_id=job.correlation_id,
             )
+        )
+        metrics_registry.increment(
+            "accessiq_remediation_jobs_total",
+            labels={
+                "remediation_type": job.remediation_type,
+                "status": job.status,
+            },
         )
 
         return job

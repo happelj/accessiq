@@ -22,6 +22,7 @@ The Helm chart renders:
 - NetworkPolicies
 - Frontend Ingress
 - Backend API and Swagger Ingress
+- Backend Prometheus scrape annotations
 - Helm test pod for the backend health endpoint
 
 ```text
@@ -195,12 +196,47 @@ Non-sensitive backend configuration is rendered into a ConfigMap:
 - model names
 - CORS settings
 - logging settings
+- metrics and tracing settings
+- OpenTelemetry service name and OTLP endpoint
 - connector enablement flags and base URLs
 - release metadata values for `/version` and `/releases/current`
 
 The frontend ConfigMap exposes `VITE_API_BASE_URL`. The current Vite frontend reads this at build time, so production frontend images should be built with the intended API URL until runtime frontend configuration is added.
 
 Release metadata is configured under the top-level `release` values block. AWS deployments override these values from GitHub Actions after images are pushed and digests are resolved.
+
+## Observability
+
+The backend exposes Prometheus metrics at `/metrics`. Helm renders pod scrape annotations when observability scraping is enabled:
+
+```yaml
+observability:
+  prometheus:
+    scrape: true
+    path: /metrics
+    port: "8000"
+```
+
+The backend ConfigMap also supports OpenTelemetry configuration:
+
+```yaml
+backend:
+  config:
+    accessiqMetricsEnabled: "true"
+    accessiqTracingEnabled: "true"
+    otelServiceName: accessiq-api
+    otelExporterOtlpEndpoint: ""
+```
+
+For local validation:
+
+```bash
+kubectl -n accessiq-dev get pod -l app.kubernetes.io/component=backend -o yaml
+kubectl -n accessiq-dev port-forward svc/accessiq-backend 8000:8000
+curl http://localhost:8000/metrics
+```
+
+The default dashboard and alert examples live under `docs/observability/`.
 
 ## Secrets
 
@@ -331,6 +367,7 @@ Default backend paths include:
 - `/redoc`
 - `/openapi.json`
 - `/health`
+- `/metrics`
 - `/login`
 - `/users`
 - `/applications`

@@ -20,6 +20,7 @@ from ..domain.events import (
 )
 from ..domain.publisher import publish_domain_events
 from ..models import ProvisioningHistory, ProvisioningJob
+from ..observability import metrics_registry
 
 
 class ProvisioningJobStatus(StrEnum):
@@ -147,6 +148,15 @@ class ProvisioningJobService:
                 operation=job.operation,
             )
         )
+        metrics_registry.increment(
+            "accessiq_provisioning_jobs_total",
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
+            description="Provisioning jobs grouped by connector, operation, and status.",
+        )
 
         return job
 
@@ -172,6 +182,14 @@ class ProvisioningJobService:
                 connector=job.connector,
                 operation=job.operation,
             )
+        )
+        metrics_registry.increment(
+            "accessiq_provisioning_jobs_total",
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
         )
 
         return job
@@ -224,6 +242,24 @@ class ProvisioningJobService:
                 status=job.status,
             )
         )
+        metrics_registry.increment(
+            "accessiq_provisioning_jobs_total",
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
+        )
+        metrics_registry.observe(
+            "accessiq_provisioning_job_duration_seconds",
+            duration_ms / 1000,
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
+            description="Provisioning job duration in seconds.",
+        )
 
         return job
 
@@ -275,6 +311,23 @@ class ProvisioningJobService:
                 message=message,
             )
         )
+        metrics_registry.increment(
+            "accessiq_provisioning_jobs_total",
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
+        )
+        metrics_registry.observe(
+            "accessiq_provisioning_job_duration_seconds",
+            duration_ms / 1000,
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": job.status,
+            },
+        )
 
         return job
 
@@ -315,6 +368,14 @@ class ProvisioningJobService:
                 next_attempt=next_attempt,
                 delay_ms=delay_ms,
             )
+        )
+        metrics_registry.increment(
+            "accessiq_provisioning_jobs_total",
+            labels={
+                "connector": job.connector,
+                "operation": job.operation,
+                "status": ProvisioningJobStatus.RETRYABLE.value,
+            },
         )
 
         return history

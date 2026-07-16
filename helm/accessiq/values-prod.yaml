@@ -11,6 +11,10 @@ backend:
   config:
     corsAllowedOrigins: https://accessiq.example.com
     accessiqLogLevel: INFO
+    accessiqMetricsEnabled: "true"
+    accessiqTracingEnabled: "true"
+    otelServiceName: accessiq-api
+    otelExporterOtlpEndpoint: ""
   secrets:
     jwtSecret: replace-with-external-secret-or-sealed-secret
     openaiApiKey: ""
@@ -94,3 +98,9 @@ networkPolicies:
       ports:
         - port: 443
           protocol: TCP
+
+observability:
+  prometheus:
+    scrape: true
+    path: /metrics
+    port: "8000"

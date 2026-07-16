@@ -71,6 +71,7 @@ npm run build
 - [AWS infrastructure](docs/aws.md)
 - [AWS deployment](docs/deployment-aws.md)
 - [Release engineering](docs/releases.md)
+- [Observability](docs/observability.md)
 - [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
@@ -111,6 +112,10 @@ Set these environment variables as needed:
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime in minutes. Default: `30`.
 - `ACCESSIQ_LOGGER_NAME`: stdlib logger name used for structured JSON events. Default: `accessiq`.
 - `ACCESSIQ_LOG_LEVEL`: stdlib logging level. Default: `INFO`.
+- `ACCESSIQ_METRICS_ENABLED`: enables the Prometheus-format metrics endpoint. Default: `true`.
+- `ACCESSIQ_TRACING_ENABLED`: enables OpenTelemetry tracing instrumentation. Default: `true`.
+- `OTEL_SERVICE_NAME`: OpenTelemetry service name. Default: `accessiq-api`.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: optional OpenTelemetry Collector OTLP endpoint.
 - `AI_ENABLED`: enables AI explanation endpoints. Default: `true`.
 - `LLM_PROVIDER`: configured explanation provider. Default: `mock`.
 - `AI_TIMEOUT`: provider timeout in seconds. Default: `30`.
@@ -222,7 +227,9 @@ Every request receives an `X-Correlation-ID`. If the caller supplies the header,
 
 `GET /version` returns release metadata including Git SHA, Git tag, build timestamp, Docker image, image digest, Helm chart version, Terraform version, and environment. Authenticated `GET /releases` and `GET /releases/current` expose application-level deployment history for security administrators, IAM administrators, and auditors. See [Release engineering](docs/releases.md) for metadata, versioning, rollback, and smoke-test guidance.
 
-Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes a small in-memory metrics registry for API requests, user creation, audit events, connector execution, retries, review decisions, remediation jobs, and domain event publication. This intentionally avoids a Prometheus dependency while keeping a clear upgrade path.
+Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes provider-backed Prometheus metrics at `GET /metrics`, including HTTP request counts and latency, authentication, RBAC denials, policy denials, connector execution, provisioning, review campaigns, remediation, AI provider calls, SCIM requests, database health checks, and release metadata.
+
+OpenTelemetry tracing instruments FastAPI, SQLAlchemy, httpx, connector calls, and AI provider generation when tracing is enabled. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send spans to an OpenTelemetry Collector. Kubernetes deployments can enable Prometheus scrape annotations through Helm values. See [Observability](docs/observability.md) for metrics, logs, tracing, dashboard, alert, Kubernetes, and AWS guidance.
 
 ## Authorization Graph
 

@@ -123,6 +123,10 @@ backend:
     corsAllowCredentials: "true"
     accessiqLoggerName: accessiq
     accessiqLogLevel: INFO
+    accessiqMetricsEnabled: "true"
+    accessiqTracingEnabled: "true"
+    otelServiceName: accessiq-api
+    otelExporterOtlpEndpoint: ""
     connectors:
       salesforce:
         enabled: "true"
@@ -306,6 +310,8 @@ ingress:
     paths:
       - path: /health
         pathType: Prefix
+      - path: /metrics
+        pathType: Exact
       - path: /docs
         pathType: Prefix
       - path: /redoc
@@ -368,6 +374,12 @@ networkPolicies:
     allowBackendEgress: true
   postgresql:
     allowBackendIngress: true
+
+observability:
+  prometheus:
+    scrape: true
+    path: /metrics
+    port: "8000"
 
 tests:
   enabled: true
