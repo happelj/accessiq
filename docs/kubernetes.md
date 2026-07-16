@@ -43,10 +43,13 @@ helm/accessiq/
   values.yaml
   values-dev.yaml
   values-prod.yaml
+  values-aws.yaml
   templates/
 ```
 
 Use `values-dev.yaml` for local clusters and `values-prod.yaml` as a production-oriented starting point.
+
+Use `values-aws.yaml` for Amazon EKS deployments. It keeps the same chart structure while switching to ECR image placeholders, external RDS mode, AWS Load Balancer Controller ingress annotations, and an existing backend Secret.
 
 ## Production Hardening
 
@@ -75,8 +78,10 @@ Run these checks before deploying:
 helm lint helm/accessiq
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml
 helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml
+helm template accessiq helm/accessiq -f helm/accessiq/values-aws.yaml
 helm template accessiq helm/accessiq -f helm/accessiq/values-dev.yaml | kubectl apply --dry-run=client -f -
 helm template accessiq helm/accessiq -f helm/accessiq/values-prod.yaml | kubectl apply --dry-run=client -f -
+helm template accessiq helm/accessiq -f helm/accessiq/values-aws.yaml | kubectl apply --dry-run=client -f -
 ```
 
 PowerShell users can use the same commands.
@@ -348,6 +353,18 @@ The default ingress class is `nginx`. Update `ingress.className`, `ingress.host`
 
 Before deploying production values, replace image tags, database URL, secrets, ingress host, TLS secret, and network policy CIDRs.
 
+## AWS Values
+
+`values-aws.yaml` is the EKS deployment profile used by the manual AWS deployment workflow. It expects:
+
+- backend and frontend images in ECR
+- external RDS through `DATABASE_URL` in an existing Kubernetes Secret
+- AWS Load Balancer Controller for `ingress.className=alb`
+- an optional ACM certificate ARN for HTTPS
+- NetworkPolicies compatible with external database and HTTPS provider egress
+
+The workflow overrides the image repository, image tag, namespace, host, frontend API base URL, and backend Secret name at deployment time. See [AWS deployment](deployment-aws.md) for the full pipeline.
+
 ## Troubleshooting
 
 - `ImagePullBackOff`: build and tag local images for Docker Desktop, or push images to a registry reachable by the cluster.
@@ -362,10 +379,8 @@ Before deploying production values, replace image tags, database URL, secrets, i
 
 Future milestones can add:
 
-- image publishing to a registry
 - runtime frontend configuration
 - Kubernetes readiness for external managed PostgreSQL
 - migrations as Jobs
 - external secret integration
-- AWS EKS-specific values
 - GitOps deployment automation
