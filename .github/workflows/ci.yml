@@ -193,7 +193,7 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Python dependency audit
-        run: pip-audit --requirement requirements.txt --strict --progress-spinner off
+        run: bash scripts/python-dependency-audit.sh
 
       - name: Set up Node
         uses: actions/setup-node@v4
