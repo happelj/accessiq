@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from .config import ConnectorSettings, get_connector_settings
+from .config import ConnectorSettings, get_connector_settings, get_release_settings
 from .connectors import ProvisioningOrchestrator
 from .connectors.registry import ConnectorRegistry, build_connector_registry
 from .database import get_db
 from .delegation.services import DelegationService
 from .governance.services import CampaignService, ReviewService
+from .releases.services import ReleaseService
 from .remediation.services import RemediationService
 from .services.provisioning_job_service import ProvisioningJobService
 
@@ -48,3 +49,7 @@ def get_remediation_service(
 
 def get_delegation_service(db: Session = Depends(get_db)) -> DelegationService:
     return DelegationService(db)
+
+
+def get_release_service(db: Session = Depends(get_db)) -> ReleaseService:
+    return ReleaseService(db, settings=get_release_settings())

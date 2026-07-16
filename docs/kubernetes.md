@@ -159,6 +159,12 @@ helm upgrade accessiq helm/accessiq \
   -f helm/accessiq/values-dev.yaml
 ```
 
+Check deployed release status:
+
+```bash
+helm status accessiq --namespace accessiq-dev
+```
+
 View release history:
 
 ```bash
@@ -190,8 +196,11 @@ Non-sensitive backend configuration is rendered into a ConfigMap:
 - CORS settings
 - logging settings
 - connector enablement flags and base URLs
+- release metadata values for `/version` and `/releases/current`
 
 The frontend ConfigMap exposes `VITE_API_BASE_URL`. The current Vite frontend reads this at build time, so production frontend images should be built with the intended API URL until runtime frontend configuration is added.
+
+Release metadata is configured under the top-level `release` values block. AWS deployments override these values from GitHub Actions after images are pushed and digests are resolved.
 
 ## Secrets
 

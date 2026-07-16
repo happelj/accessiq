@@ -364,3 +364,27 @@ class ProvisioningHistory(Base):
         nullable=False,
     )
     job: Mapped[ProvisioningJob] = relationship(back_populates="history_entries")
+
+
+class ReleaseDeployment(Base):
+    __tablename__ = "release_deployments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    environment: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    deployed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        index=True,
+        nullable=False,
+    )
+    version: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    git_sha: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    git_tag: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    build_timestamp: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    docker_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    image_digest: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    helm_chart_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    helm_revision: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    terraform_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    operator: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
