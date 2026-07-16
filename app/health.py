@@ -7,7 +7,7 @@ from .config import get_auth_settings, get_connector_settings, get_database_sett
 from .connectors.registry import ConnectorRegistry
 from .domain.publisher import get_published_events
 from .models import AuditEvent, ProvisioningHistory, ProvisioningJob
-from .observability import metrics_registry
+from .observability import metrics_registry, record_database_query
 from .request_context import get_request_context
 from .schemas import HealthResponse, SubsystemHealth
 
@@ -41,7 +41,13 @@ def build_health_report(
 
 
 def _database_health(db: Session) -> SubsystemHealth:
-    db.execute(text("SELECT 1"))
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        record_database_query(operation="health_check", status="failed")
+        raise
+
+    record_database_query(operation="health_check", status="succeeded")
     settings = get_database_settings()
     return SubsystemHealth(
         status="healthy",

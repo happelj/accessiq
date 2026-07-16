@@ -56,6 +56,14 @@ class LoggingSettings:
 
 
 @dataclass(frozen=True)
+class ObservabilitySettings:
+    metrics_enabled: bool
+    tracing_enabled: bool
+    service_name: str
+    otlp_endpoint: str | None
+
+
+@dataclass(frozen=True)
 class ReleaseSettings:
     release_version: str
     environment: str
@@ -121,6 +129,16 @@ def get_logging_settings() -> LoggingSettings:
     return LoggingSettings(
         logger_name=os.getenv("ACCESSIQ_LOGGER_NAME", "accessiq"),
         log_level=os.getenv("ACCESSIQ_LOG_LEVEL", "INFO").upper(),
+    )
+
+
+@lru_cache
+def get_observability_settings() -> ObservabilitySettings:
+    return ObservabilitySettings(
+        metrics_enabled=_get_bool_env("ACCESSIQ_METRICS_ENABLED", True),
+        tracing_enabled=_get_bool_env("ACCESSIQ_TRACING_ENABLED", True),
+        service_name=os.getenv("OTEL_SERVICE_NAME", "accessiq-api"),
+        otlp_endpoint=_empty_to_none(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
     )
 
 

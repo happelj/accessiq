@@ -167,6 +167,11 @@ class CampaignService:
                 name=campaign.name,
             )
         )
+        metrics_registry.increment(
+            "accessiq_review_campaigns_total",
+            labels={"status": campaign.status},
+            description="Access review campaigns grouped by lifecycle status.",
+        )
 
         return campaign
 
@@ -235,6 +240,16 @@ class CampaignService:
                 total_items=campaign.total_items,
             )
         )
+        metrics_registry.increment(
+            "accessiq_review_campaigns_total",
+            labels={"status": campaign.status},
+        )
+        metrics_registry.set_gauge(
+            "accessiq_review_campaign_items",
+            float(campaign.total_items),
+            labels={"campaign_id": str(campaign.id), "status": campaign.status},
+            description="Current review item count for a campaign.",
+        )
 
         return campaign
 
@@ -269,6 +284,10 @@ class CampaignService:
                 abstain_count=campaign.abstain_count,
             )
         )
+        metrics_registry.increment(
+            "accessiq_review_campaigns_total",
+            labels={"status": campaign.status},
+        )
 
         return campaign
 
@@ -295,6 +314,10 @@ class CampaignService:
                 occurred_at=event_time(),
                 campaign_id=campaign.id,
             )
+        )
+        metrics_registry.increment(
+            "accessiq_review_campaigns_total",
+            labels={"status": campaign.status},
         )
 
         return campaign
@@ -579,6 +602,11 @@ class ReviewService:
             reason=audit_reason,
         )
         metrics_registry.increment("review_decisions_total")
+        metrics_registry.increment(
+            "accessiq_review_decisions_total",
+            labels={"decision": decision.value},
+            description="Access review decisions grouped by decision value.",
+        )
 
         return self.lookup_review_item(item_id)
 

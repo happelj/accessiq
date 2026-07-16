@@ -46,6 +46,10 @@ backend:
     corsAllowedOrigins: https://accessiq.example.com
     corsAllowCredentials: "true"
     accessiqLogLevel: INFO
+    accessiqMetricsEnabled: "true"
+    accessiqTracingEnabled: "true"
+    otelServiceName: accessiq-api
+    otelExporterOtlpEndpoint: ""
     connectors:
       salesforce:
         enabled: "true"
@@ -149,3 +153,9 @@ networkPolicies:
       ports:
         - port: 443
           protocol: TCP
+
+observability:
+  prometheus:
+    scrape: true
+    path: /metrics
+    port: "8000"

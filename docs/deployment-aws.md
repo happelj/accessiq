@@ -25,6 +25,34 @@ GitHub workflow_dispatch
 
 AWS infrastructure is still managed by Terraform under `infrastructure/terraform`. The deployment workflow assumes that EKS, ECR, RDS, IAM, and Secrets Manager resources already exist.
 
+## Observability
+
+AWS deployments use the same portable observability stack as local Kubernetes:
+
+- structured JSON logs are emitted to stdout/stderr and can be collected by CloudWatch Container Insights, Fluent Bit, or the Amazon CloudWatch Observability add-on
+- `/metrics` exposes Prometheus text-format metrics from the backend
+- Helm can add Prometheus scrape annotations to backend pods
+- OpenTelemetry tracing can export spans to an OpenTelemetry Collector through `OTEL_EXPORTER_OTLP_ENDPOINT`
+- Amazon Managed Service for Prometheus can scrape or receive metrics from the collector
+- Amazon Managed Grafana can use Managed Prometheus as a data source and import `docs/observability/accessiq-grafana-dashboard.json`
+
+Example Helm overrides for an EKS collector service:
+
+```bash
+--set-string backend.config.otelExporterOtlpEndpoint=http://otel-collector.observability:4317 \
+--set-string backend.config.otelServiceName=accessiq-api \
+--set-string backend.config.accessiqTracingEnabled=true
+```
+
+Example manual metrics check after deployment:
+
+```bash
+kubectl -n accessiq port-forward svc/accessiq-backend 8000:8000
+curl http://localhost:8000/metrics
+```
+
+Alert examples are in `docs/observability/prometheus-alerts.yaml`.
+
 ## Workflow
 
 The deployment workflow lives at `.github/workflows/deploy-aws.yml`.
@@ -258,6 +286,7 @@ scripts/aws-smoke-test.sh
 It verifies:
 
 - `/health`
+- `/metrics`
 - `/version`
 - frontend root `/`
 - `/openapi.json`

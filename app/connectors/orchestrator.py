@@ -22,7 +22,7 @@ from ..domain.events import (
 )
 from ..domain.publisher import publish_domain_events
 from ..models import Application, Entitlement
-from ..observability import log_event, metrics_registry
+from ..observability import log_event, metrics_registry, trace_span
 from ..request_context import get_request_context
 from ..services.provisioning_job_service import (
     ProvisioningHistoryEventType,
@@ -136,6 +136,15 @@ class ProvisioningOrchestrator:
                 )
             )
             metrics_registry.increment("connector_invocations_total")
+            metrics_registry.increment(
+                "accessiq_connector_executions_total",
+                labels={
+                    "connector": connector.name,
+                    "operation": resolved_operation.value,
+                    "status": "started",
+                },
+                description="Connector execution attempts grouped by result.",
+            )
             self._record_audit(
                 db,
                 requester_id=requester_id,
@@ -150,12 +159,18 @@ class ProvisioningOrchestrator:
             )
 
             try:
-                result = self._call_connector(
-                    connector,
-                    resolved_operation,
-                    operation_payload,
-                    correlation_id=resolved_correlation_id,
-                )
+                with trace_span(
+                    "connector.execute",
+                    connector=connector.name,
+                    operation=resolved_operation.value,
+                    attempt=attempt,
+                ):
+                    result = self._call_connector(
+                        connector,
+                        resolved_operation,
+                        operation_payload,
+                        correlation_id=resolved_correlation_id,
+                    )
             except Exception as exc:
                 decision = self.retry_policy.decision(exc, attempt=attempt)
 
@@ -237,6 +252,33 @@ class ProvisioningOrchestrator:
                     ]
                 )
                 metrics_registry.increment("connector_failures_total")
+                metrics_registry.increment(
+                    "accessiq_connector_executions_total",
+                    labels={
+                        "connector": connector.name,
+                        "operation": resolved_operation.value,
+                        "status": "failed",
+                    },
+                )
+                metrics_registry.increment(
+                    "accessiq_connector_failures_total",
+                    labels={
+                        "connector": connector.name,
+                        "operation": resolved_operation.value,
+                        "retryable": str(result.retryable).lower(),
+                    },
+                    description="Connector failures grouped by connector.",
+                )
+                metrics_registry.observe(
+                    "accessiq_connector_duration_seconds",
+                    result.duration_ms / 1000,
+                    labels={
+                        "connector": connector.name,
+                        "operation": resolved_operation.value,
+                        "status": result.status.value,
+                    },
+                    description="Connector execution duration in seconds.",
+                )
                 log_event(
                     "connector_execution",
                     status="failed",
@@ -311,6 +353,23 @@ class ProvisioningOrchestrator:
                 ]
             )
             metrics_registry.increment("connector_success_total")
+            metrics_registry.increment(
+                "accessiq_connector_executions_total",
+                labels={
+                    "connector": connector.name,
+                    "operation": resolved_operation.value,
+                    "status": result.status.value,
+                },
+            )
+            metrics_registry.observe(
+                "accessiq_connector_duration_seconds",
+                result.duration_ms / 1000,
+                labels={
+                    "connector": connector.name,
+                    "operation": resolved_operation.value,
+                    "status": result.status.value,
+                },
+            )
             log_event(
                 "connector_execution",
                 status=result.status.value,
