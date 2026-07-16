@@ -151,7 +151,7 @@ ruff check app tests
 black --check app tests
 mypy
 pytest -vv
-pip-audit --requirement requirements.txt --strict --progress-spinner off
+bash scripts/python-dependency-audit.sh
 
 cd frontend
 npm ci

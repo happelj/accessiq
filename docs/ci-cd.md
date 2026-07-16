@@ -54,7 +54,7 @@ ruff check app tests
 black --check app tests
 mypy
 pytest -vv
-pip-audit --requirement requirements.txt --strict --progress-spinner off
+bash scripts/python-dependency-audit.sh
 ```
 
 Frontend quality:
@@ -103,7 +103,7 @@ Frontend tools are configured under `frontend/`:
 
 ## Security Scanning
 
-`pip-audit` fails the workflow for known Python dependency vulnerabilities. `npm audit --audit-level=moderate` fails the workflow for moderate, high, or critical JavaScript dependency findings.
+`scripts/python-dependency-audit.sh` runs `pip-audit` in strict mode with bounded retries for transient PyPI connectivity failures. Known Python dependency vulnerabilities still fail the workflow. `npm audit --audit-level=moderate` fails the workflow for moderate, high, or critical JavaScript dependency findings.
 
 When a scan fails:
 
