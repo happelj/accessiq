@@ -69,6 +69,7 @@ npm run build
 - [CI/CD quality gates](docs/ci-cd.md)
 - [Kubernetes and Helm](docs/kubernetes.md)
 - [AWS infrastructure](docs/aws.md)
+- [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
 - [Provisioning jobs and history](docs/provisioning.md)
@@ -197,12 +198,17 @@ Validate an environment from its directory:
 ```bash
 cd infrastructure/terraform/environments/dev
 terraform init
-terraform fmt -recursive ../..
 terraform validate
+```
+
+After the S3 remote backend has been bootstrapped, copy `backend.tf.example` to `backend.tf`, create `backend.hcl` from `backend.example.hcl`, and run:
+
+```bash
+terraform init -backend-config=backend.hcl
 terraform plan
 ```
 
-This infrastructure milestone does not deploy AccessIQ to AWS, push Docker images, or configure GitHub Actions deployment. See [AWS infrastructure](docs/aws.md) for architecture, module details, costs, and cleanup guidance.
+This infrastructure milestone does not deploy AccessIQ to AWS, push Docker images, or configure GitHub Actions deployment. See [AWS infrastructure](docs/aws.md) for architecture, module details, costs, and cleanup guidance, and [Terraform workflow](docs/terraform.md) for remote state, backend bootstrap, planning, applying, destroying, and future CI guidance.
 
 ## Operations And Observability
 

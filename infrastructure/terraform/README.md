@@ -19,17 +19,32 @@ environments/
 
 ## Local Commands
 
-Run from an environment directory:
+Run formatting from the repository root:
+
+```bash
+terraform fmt -recursive infrastructure/terraform
+```
+
+Run static validation from an environment directory before the S3 backend exists:
 
 ```bash
 cd infrastructure/terraform/environments/dev
 terraform init
-terraform fmt -recursive ../..
 terraform validate
+```
+
+After backend bootstrap, copy the backend example and initialize the remote backend:
+
+```bash
+cp backend.tf.example backend.tf
+cp backend.example.hcl backend.hcl
+terraform init -backend-config=backend.hcl
 terraform plan
 ```
 
 Do not run `terraform apply` until AWS account, region, cost, and naming choices have been reviewed.
+
+See `docs/terraform.md` for backend bootstrap, remote state, planning, applying, destroying, and future CI guidance.
 
 ## Notes
 

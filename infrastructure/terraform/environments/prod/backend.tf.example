@@ -1,0 +1,6 @@
+# Copy this file to backend.tf before running:
+# terraform init -backend-config=backend.hcl
+
+terraform {
+  backend "s3" {}
+}

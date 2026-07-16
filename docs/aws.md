@@ -20,7 +20,7 @@ flowchart TD
     IAM --> ALB["AWS Load Balancer Controller Role"]
 ```
 
-The Terraform is organized under `infrastructure/terraform` with reusable modules and separate `dev` and `prod` environment roots.
+The Terraform is organized under `infrastructure/terraform` with reusable modules and separate `dev` and `prod` environment roots. See [Terraform workflow](terraform.md) for remote state, backend bootstrap, planning, applying, destroying, and future CI guidance.
 
 ## Terraform Modules
 
@@ -151,16 +151,40 @@ Each environment outputs:
 
 ## Validation
 
-Run from an environment directory:
+Run formatting from the repository root:
+
+```bash
+terraform fmt -recursive infrastructure/terraform
+```
+
+Before the remote backend has been bootstrapped, run static validation from an environment directory:
 
 ```bash
 terraform init
-terraform fmt -recursive ../..
 terraform validate
+```
+
+After the S3 backend exists, copy `backend.tf.example` to `backend.tf`, create `backend.hcl` from `backend.example.hcl`, and initialize from the environment directory:
+
+```bash
+terraform init -backend-config=backend.hcl
 terraform plan
 ```
 
 Only run `terraform plan` when AWS credentials and region are configured. Do not run `terraform apply` until the cost and environment settings have been reviewed.
+
+## Remote State
+
+Each environment includes an example partial S3 backend and supplies real backend values through uncommitted bootstrap files:
+
+- `environments/dev/backend.tf.example`
+- `environments/dev/backend.example.hcl`
+- `environments/prod/backend.tf.example`
+- `environments/prod/backend.example.hcl`
+
+Copy `backend.tf.example` to `backend.tf` and copy `backend.example.hcl` to `backend.hcl` during bootstrap. The examples use separate state keys for `dev` and `prod` and enable S3 native state locking with `use_lockfile = true`. The repository does not hardcode a state bucket name because the bucket must be globally unique and account-specific.
+
+Bootstrap the S3 state bucket before running normal `terraform init -backend-config=backend.hcl`. Terraform does not create its own backend resources automatically in this repository.
 
 ## Estimated Costs
 
@@ -185,7 +209,7 @@ From the environment directory:
 terraform destroy
 ```
 
-Before destroying production, confirm:
+Destroy uses the same remote state backend as plan and apply. Before destroying production, confirm:
 
 - RDS final snapshot expectations
 - RDS deletion protection setting
