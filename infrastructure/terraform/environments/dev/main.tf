@@ -71,19 +71,19 @@ module "eks" {
 module "iam_workload" {
   source = "../../modules/iam"
 
-  name                                      = "${local.name}-workload"
-  create_eks_cluster_role                   = false
-  create_eks_node_role                      = false
-  create_load_balancer_controller_role      = true
-  oidc_provider_arn                         = module.eks.oidc_provider_arn
-  oidc_provider_url                         = module.eks.oidc_provider_url
-  create_github_actions_oidc_provider       = var.enable_github_actions_oidc
-  create_github_actions_role                = var.enable_github_actions_oidc
-  github_oidc_thumbprints                   = var.github_oidc_thumbprints
-  github_repositories                       = var.github_repositories
-  ecr_repository_arns                       = values(module.ecr.repository_arns)
-  eks_cluster_arn                           = module.eks.cluster_arn
-  tags                                      = local.common_tags
+  name                                 = "${local.name}-workload"
+  create_eks_cluster_role              = false
+  create_eks_node_role                 = false
+  create_load_balancer_controller_role = true
+  oidc_provider_arn                    = module.eks.oidc_provider_arn
+  oidc_provider_url                    = module.eks.oidc_provider_url
+  create_github_actions_oidc_provider  = var.enable_github_actions_oidc
+  create_github_actions_role           = var.enable_github_actions_oidc
+  github_oidc_thumbprints              = var.github_oidc_thumbprints
+  github_repositories                  = var.github_repositories
+  ecr_repository_arns                  = values(module.ecr.repository_arns)
+  eks_cluster_arn                      = module.eks.cluster_arn
+  tags                                 = local.common_tags
 }
 
 module "rds" {

@@ -17,15 +17,15 @@ resource "aws_security_group" "this" {
 }
 
 resource "aws_security_group_rule" "postgresql_ingress" {
-  for_each = toset(var.allowed_security_group_ids)
+  count = length(var.allowed_security_group_ids)
 
   type                     = "ingress"
-  description              = "Allow PostgreSQL from ${each.value}"
+  description              = "Allow PostgreSQL from ${var.allowed_security_group_ids[count.index]}"
   from_port                = 5432
   to_port                  = 5432
   protocol                 = "tcp"
   security_group_id        = aws_security_group.this.id
-  source_security_group_id = each.value
+  source_security_group_id = var.allowed_security_group_ids[count.index]
 }
 
 resource "aws_db_subnet_group" "this" {
@@ -77,8 +77,8 @@ resource "aws_db_instance" "this" {
   parameter_group_name   = aws_db_parameter_group.this.name
   publicly_accessible    = false
 
-  backup_retention_period = var.backup_retention_period
-  copy_tags_to_snapshot   = true
+  backup_retention_period   = var.backup_retention_period
+  copy_tags_to_snapshot     = true
   deletion_protection       = var.deletion_protection
   multi_az                  = var.multi_az
   skip_final_snapshot       = var.skip_final_snapshot
