@@ -1,0 +1,320 @@
+name: Deploy AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform/AccessIQ environment name.
+        type: choice
+        required: true
+        default: dev
+        options:
+          - dev
+          - prod
+      aws_region:
+        description: AWS region that contains ECR and EKS.
+        type: string
+        required: true
+        default: us-east-1
+      aws_role_arn:
+        description: IAM role ARN assumed by GitHub Actions through OIDC.
+        type: string
+        required: true
+      eks_cluster_name:
+        description: Target EKS cluster name.
+        type: string
+        required: true
+      namespace:
+        description: Kubernetes namespace for AccessIQ.
+        type: string
+        required: true
+        default: accessiq
+      release_name:
+        description: Helm release name.
+        type: string
+        required: true
+        default: accessiq
+      ingress_host:
+        description: Public DNS host routed to the AccessIQ ingress.
+        type: string
+        required: true
+        default: accessiq.example.com
+      frontend_api_base_url:
+        description: Browser-facing API base URL. Defaults to https://<ingress_host>.
+        type: string
+        required: false
+        default: ""
+      backend_secret_name:
+        description: Existing Kubernetes Secret containing DATABASE_URL, JWT_SECRET, OPENAI_API_KEY, and ANTHROPIC_API_KEY.
+        type: string
+        required: true
+        default: accessiq-backend-runtime
+      image_tag:
+        description: Immutable image tag. Defaults to the Git SHA.
+        type: string
+        required: false
+        default: ""
+      alb_certificate_arn:
+        description: Optional ACM certificate ARN for HTTPS on AWS Load Balancer Controller.
+        type: string
+        required: false
+        default: ""
+      smoke_base_url:
+        description: Optional smoke test base URL. Defaults to https://<ingress_host>.
+        type: string
+        required: false
+        default: ""
+      run_smoke_tests:
+        description: Run smoke tests after rollout.
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, publish, and deploy to EKS
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: accessiq
+          POSTGRES_USER: accessiq
+          POSTGRES_PASSWORD: accessiq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U accessiq -d accessiq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      AWS_REGION: ${{ inputs.aws_region }}
+      ACCESSIQ_ENVIRONMENT: ${{ inputs.environment }}
+      EKS_CLUSTER_NAME: ${{ inputs.eks_cluster_name }}
+      NAMESPACE: ${{ inputs.namespace }}
+      RELEASE_NAME: ${{ inputs.release_name }}
+      INGRESS_HOST: ${{ inputs.ingress_host }}
+      BACKEND_SECRET_NAME: ${{ inputs.backend_secret_name }}
+      ALB_CERTIFICATE_ARN: ${{ inputs.alb_certificate_arn }}
+      IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || github.sha }}
+      FRONTEND_API_BASE_URL: ${{ inputs.frontend_api_base_url != '' && inputs.frontend_api_base_url || format('https://{0}', inputs.ingress_host) }}
+      SMOKE_BASE_URL: ${{ inputs.smoke_base_url != '' && inputs.smoke_base_url || format('https://{0}', inputs.ingress_host) }}
+      DATABASE_URL: postgresql+psycopg://accessiq:accessiq@localhost:5432/accessiq
+      JWT_SECRET: ci-accessiq-secret-minimum-32-bytes
+      AI_ENABLED: "true"
+      LLM_PROVIDER: mock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Backend tests
+        run: pytest -vv
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Frontend production build validation
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ env.FRONTEND_API_BASE_URL }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve AWS account and ECR repositories
+        id: aws
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          backend_repo_name="accessiq-${ACCESSIQ_ENVIRONMENT}-backend"
+          frontend_repo_name="accessiq-${ACCESSIQ_ENVIRONMENT}-frontend"
+
+          aws ecr describe-repositories --repository-names "${backend_repo_name}" >/dev/null
+          aws ecr describe-repositories --repository-names "${frontend_repo_name}" >/dev/null
+
+          {
+            echo "account_id=${account_id}"
+            echo "registry=${registry}"
+            echo "backend_repository=${registry}/${backend_repo_name}"
+            echo "frontend_repository=${registry}/${frontend_repo_name}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build backend image
+        run: |
+          docker build --pull \
+            --tag "${{ steps.aws.outputs.backend_repository }}:${IMAGE_TAG}" \
+            .
+
+      - name: Build frontend image
+        run: |
+          docker build --pull \
+            --build-arg "VITE_API_BASE_URL=${FRONTEND_API_BASE_URL}" \
+            --tag "${{ steps.aws.outputs.frontend_repository }}:${IMAGE_TAG}" \
+            frontend
+
+      - name: Push backend image
+        run: docker push "${{ steps.aws.outputs.backend_repository }}:${IMAGE_TAG}"
+
+      - name: Push frontend image
+        run: docker push "${{ steps.aws.outputs.frontend_repository }}:${IMAGE_TAG}"
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region "${AWS_REGION}" \
+            --name "${EKS_CLUSTER_NAME}"
+
+      - name: Verify Kubernetes access and runtime Secret
+        run: |
+          kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "${NAMESPACE}" get secret "${BACKEND_SECRET_NAME}"
+          kubectl auth can-i get deployments --namespace "${NAMESPACE}"
+          kubectl auth can-i patch deployments --namespace "${NAMESPACE}"
+
+      - name: Helm lint AWS values
+        run: helm lint helm/accessiq -f helm/accessiq/values-aws.yaml
+
+      - name: Render AWS manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm_args=(
+            template "${RELEASE_NAME}" helm/accessiq
+            --namespace "${NAMESPACE}"
+            -f helm/accessiq/values-aws.yaml
+            --set "namespace.name=${NAMESPACE}"
+            --set-string "backend.image.repository=${{ steps.aws.outputs.backend_repository }}"
+            --set-string "backend.image.tag=${IMAGE_TAG}"
+            --set-string "frontend.image.repository=${{ steps.aws.outputs.frontend_repository }}"
+            --set-string "frontend.image.tag=${IMAGE_TAG}"
+            --set-string "ingress.host=${INGRESS_HOST}"
+            --set-string "frontend.apiBaseUrl=${FRONTEND_API_BASE_URL}"
+            --set-string "backend.config.corsAllowedOrigins=${FRONTEND_API_BASE_URL}"
+            --set-string "backend.secrets.existingSecret=${BACKEND_SECRET_NAME}"
+          )
+
+          if [ -n "${ALB_CERTIFICATE_ARN}" ]; then
+            tls_values="${RUNNER_TEMP}/accessiq-alb-tls-values.yaml"
+            cat > "${tls_values}" <<EOF
+          ingress:
+            annotations:
+              alb.ingress.kubernetes.io/certificate-arn: "${ALB_CERTIFICATE_ARN}"
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+              alb.ingress.kubernetes.io/ssl-redirect: "443"
+          EOF
+            helm_args+=(-f "${tls_values}")
+          fi
+
+          helm "${helm_args[@]}" > rendered-aws.yaml
+
+      - name: Deploy Helm release to EKS
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm_args=(
+            upgrade --install "${RELEASE_NAME}" helm/accessiq
+            --namespace "${NAMESPACE}"
+            --create-namespace
+            -f helm/accessiq/values-aws.yaml
+            --set "namespace.name=${NAMESPACE}"
+            --set-string "backend.image.repository=${{ steps.aws.outputs.backend_repository }}"
+            --set-string "backend.image.tag=${IMAGE_TAG}"
+            --set-string "frontend.image.repository=${{ steps.aws.outputs.frontend_repository }}"
+            --set-string "frontend.image.tag=${IMAGE_TAG}"
+            --set-string "ingress.host=${INGRESS_HOST}"
+            --set-string "frontend.apiBaseUrl=${FRONTEND_API_BASE_URL}"
+            --set-string "backend.config.corsAllowedOrigins=${FRONTEND_API_BASE_URL}"
+            --set-string "backend.secrets.existingSecret=${BACKEND_SECRET_NAME}"
+            --wait
+            --timeout 10m
+          )
+
+          if [ -n "${ALB_CERTIFICATE_ARN}" ]; then
+            tls_values="${RUNNER_TEMP}/accessiq-alb-tls-values.yaml"
+            cat > "${tls_values}" <<EOF
+          ingress:
+            annotations:
+              alb.ingress.kubernetes.io/certificate-arn: "${ALB_CERTIFICATE_ARN}"
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+              alb.ingress.kubernetes.io/ssl-redirect: "443"
+          EOF
+            helm_args+=(
+              -f "${tls_values}"
+            )
+          fi
+
+          helm "${helm_args[@]}"
+
+      - name: Verify rollout
+        run: |
+          kubectl -n "${NAMESPACE}" rollout status deployment \
+            -l "app.kubernetes.io/instance=${RELEASE_NAME},app.kubernetes.io/component=backend" \
+            --timeout=10m
+          kubectl -n "${NAMESPACE}" rollout status deployment \
+            -l "app.kubernetes.io/instance=${RELEASE_NAME},app.kubernetes.io/component=frontend" \
+            --timeout=10m
+          kubectl -n "${NAMESPACE}" get pods,services,ingress
+
+      - name: Smoke tests
+        if: ${{ inputs.run_smoke_tests }}
+        run: bash scripts/aws-smoke-test.sh
+        env:
+          ACCESSIQ_BASE_URL: ${{ env.SMOKE_BASE_URL }}

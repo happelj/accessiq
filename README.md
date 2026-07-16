@@ -69,6 +69,7 @@ npm run build
 - [CI/CD quality gates](docs/ci-cd.md)
 - [Kubernetes and Helm](docs/kubernetes.md)
 - [AWS infrastructure](docs/aws.md)
+- [AWS deployment](docs/deployment-aws.md)
 - [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
@@ -208,7 +209,9 @@ terraform init -backend-config=backend.hcl
 terraform plan
 ```
 
-This infrastructure milestone does not deploy AccessIQ to AWS, push Docker images, or configure GitHub Actions deployment. See [AWS infrastructure](docs/aws.md) for architecture, module details, costs, and cleanup guidance, and [Terraform workflow](docs/terraform.md) for remote state, backend bootstrap, planning, applying, destroying, and future CI guidance.
+AWS deployment is available as an explicit, manual GitHub Actions workflow that builds immutable backend and frontend images, pushes them to ECR, deploys the Helm chart to EKS, verifies rollout, and runs smoke tests. See [AWS deployment](docs/deployment-aws.md) for OIDC, ECR, EKS, Helm, secrets, rollback, and troubleshooting guidance.
+
+The infrastructure milestone does not automatically deploy AccessIQ to AWS, push Docker images, or configure GitHub Actions deployment on every commit. See [AWS infrastructure](docs/aws.md) for architecture, module details, costs, and cleanup guidance, and [Terraform workflow](docs/terraform.md) for remote state, backend bootstrap, planning, applying, destroying, and future CI guidance.
 
 ## Operations And Observability
 

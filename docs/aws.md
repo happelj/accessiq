@@ -1,6 +1,6 @@
 # AWS Infrastructure
 
-Milestone 15A adds a Terraform foundation for running AccessIQ on AWS in a future deployment milestone. It provisions infrastructure only. It does not deploy the application to AWS, push container images, or configure GitHub Actions deployment.
+Milestone 15A adds a Terraform foundation for running AccessIQ on AWS. Milestone 15B adds a manual GitHub Actions deployment path that builds images, pushes them to ECR, deploys the Helm chart to EKS, verifies rollout, and runs smoke tests. See [AWS deployment](deployment-aws.md) for the deployment workflow.
 
 ## Architecture
 
@@ -82,7 +82,7 @@ The EKS module creates:
 - control plane logs for API, audit, and authenticator events
 - EKS OIDC provider for IRSA
 
-This milestone does not install Helm releases, ingress controllers, metrics-server, or application workloads.
+Terraform does not install Helm releases, ingress controllers, metrics-server, or application workloads. The deployment workflow assumes the target EKS cluster has the required cluster add-ons, such as AWS Load Balancer Controller and metrics-server when HPAs are enabled.
 
 ## RDS
 
@@ -106,7 +106,7 @@ The ECR module creates two repositories:
 
 Repositories use immutable tags, scan-on-push, AES256 encryption, and lifecycle rules for tagged and untagged images.
 
-This milestone does not build or push Docker images.
+The AWS deployment workflow builds backend and frontend images, tags them with the Git SHA or a supplied immutable tag, and pushes them to these repositories.
 
 ## IAM
 
@@ -117,7 +117,7 @@ The IAM module creates least-privilege-oriented roles for:
 - AWS Load Balancer Controller through IRSA
 - future GitHub Actions OIDC use when explicitly enabled
 
-The GitHub Actions OIDC role is disabled by default. Before enabling it, set allowed repositories and verify the OIDC thumbprints for the target AWS account workflow.
+The GitHub Actions OIDC role is disabled by default. Before enabling it, set allowed repositories and verify the OIDC thumbprints for the target AWS account workflow. The deployment workflow also requires the role to have Kubernetes RBAC access inside EKS.
 
 ## Secrets
 

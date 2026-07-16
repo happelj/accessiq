@@ -1,0 +1,136 @@
+# AWS/EKS deployment values for AccessIQ.
+#
+# This file is intended for use with Amazon EKS, Amazon ECR, external RDS,
+# and a pre-created Kubernetes Secret populated from AWS Secrets Manager or an
+# equivalent secret delivery workflow. Local Docker Compose and local
+# Kubernetes workflows should continue to use values-dev.yaml.
+
+namespace:
+  create: true
+  name: accessiq
+
+serviceAccount:
+  create: true
+  name: accessiq
+  annotations: {}
+  automountServiceAccountToken: false
+
+backend:
+  replicaCount: 2
+  image:
+    repository: REPLACE_WITH_ECR_BACKEND_REPOSITORY_URL
+    tag: REPLACE_WITH_IMMUTABLE_IMAGE_TAG
+    pullPolicy: IfNotPresent
+  config:
+    aiEnabled: "true"
+    llmProvider: mock
+    aiTimeout: "30"
+    aiMaxTokens: "1200"
+    openaiModel: gpt-4.1-mini
+    anthropicModel: claude-3-5-sonnet-latest
+    corsAllowedOrigins: https://accessiq.example.com
+    corsAllowCredentials: "true"
+    accessiqLogLevel: INFO
+    connectors:
+      salesforce:
+        enabled: "true"
+        apiBaseUrl: ""
+      github:
+        enabled: "true"
+        apiBaseUrl: ""
+      zendesk:
+        enabled: "true"
+        apiBaseUrl: ""
+      finance:
+        enabled: "true"
+        apiBaseUrl: ""
+  secrets:
+    existingSecret: accessiq-backend-runtime
+    keys:
+      databaseUrl: DATABASE_URL
+      jwtSecret: JWT_SECRET
+      openaiApiKey: OPENAI_API_KEY
+      anthropicApiKey: ANTHROPIC_API_KEY
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: REPLACE_WITH_ECR_FRONTEND_REPOSITORY_URL
+    tag: REPLACE_WITH_IMMUTABLE_IMAGE_TAG
+    pullPolicy: IfNotPresent
+  apiBaseUrl: https://accessiq.example.com
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+
+database:
+  external:
+    # DATABASE_URL should normally come from backend.secrets.existingSecret.
+    # Keep this empty when the existing Secret supplies DATABASE_URL.
+    url: ""
+  internal:
+    enabled: false
+
+ingress:
+  enabled: true
+  className: alb
+  host: accessiq.example.com
+  annotations:
+    alb.ingress.kubernetes.io/group.name: accessiq
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/success-codes: "200"
+  tls: []
+
+networkPolicies:
+  enabled: true
+  backend:
+    externalDatabaseEgress:
+      enabled: true
+      cidr: 0.0.0.0/0
+      except: []
+      port: 5432
+      protocol: TCP
+    externalEgress:
+      enabled: true
+      cidr: 0.0.0.0/0
+      except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP

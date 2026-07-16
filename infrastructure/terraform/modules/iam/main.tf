@@ -263,6 +263,7 @@ data "aws_iam_policy_document" "github_actions" {
   statement {
     sid = "EcrImagePush"
     actions = [
+      "ecr:DescribeRepositories",
       "ecr:BatchCheckLayerAvailability",
       "ecr:CompleteLayerUpload",
       "ecr:InitiateLayerUpload",
