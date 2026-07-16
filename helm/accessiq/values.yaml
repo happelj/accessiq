@@ -13,6 +13,21 @@ serviceAccount:
 
 imagePullSecrets: []
 
+release:
+  version: "0.1.0"
+  environment: local
+  gitSha: unknown
+  gitTag: ""
+  buildTimestamp: ""
+  dockerImage: ""
+  imageDigest: ""
+  helmChartVersion: ""
+  helmRevision: ""
+  terraformVersion: ""
+  operator: local
+  status: deployed
+  deployedAt: ""
+
 backend:
   replicaCount: 1
   image:
@@ -322,6 +337,10 @@ ingress:
       - path: /graph
         pathType: Prefix
       - path: /ai
+        pathType: Prefix
+      - path: /version
+        pathType: Exact
+      - path: /releases
         pathType: Prefix
 
 networkPolicies:

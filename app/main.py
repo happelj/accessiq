@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .audit_service import create_audit_event
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .connectors.registry import ConnectorRegistry
-from .config import get_auth_settings, get_cors_settings
+from .config import get_auth_settings, get_cors_settings, get_release_settings
 from .database import Base, SessionLocal, engine, get_db
 from .dependencies import get_connector_registry, get_delegation_service
 from .health import build_health_report
@@ -40,11 +40,14 @@ from .models import (
     GroupMember,
     ProvisioningHistory,
     ProvisioningJob,
+    ReleaseDeployment,
     User,
 )
 from .observability import configure_logging, log_event, metrics_registry
 from .policy_engine import evaluate_grant_policy, evaluate_revoke_policy
 from .provisioning.routes import router as provisioning_router
+from .releases.routes import router as releases_router
+from .releases.services import ReleaseService
 from .remediation.models import RemediationJob
 from .remediation.routes import router as remediation_router
 from .rbac import forbidden_exception, require_roles
@@ -222,6 +225,7 @@ def ensure_schema_compatibility() -> None:
             EnterpriseUserProfile.__table__,
             ProvisioningJob.__table__,
             ProvisioningHistory.__table__,
+            ReleaseDeployment.__table__,
             CertificationCampaign.__table__,
             CertificationReviewItem.__table__,
             CertificationDecision.__table__,
@@ -442,7 +446,15 @@ def initialize_database() -> None:
         ensure_schema_compatibility()
         seed_users()
         seed_applications_and_entitlements()
+        record_current_deployment()
         _database_initialized = True
+
+
+def record_current_deployment() -> None:
+    with SessionLocal() as db:
+        service = ReleaseService(db, settings=get_release_settings())
+        service.record_current_deployment()
+        db.commit()
 
 
 @asynccontextmanager
@@ -518,6 +530,12 @@ app = FastAPI(
                 "provider-backed explanations."
             ),
         },
+        {
+            "name": "Releases",
+            "description": (
+                "Release metadata, current version, and deployment history."
+            ),
+        },
     ],
 )
 
@@ -538,6 +556,7 @@ app.include_router(remediation_router)
 app.include_router(delegation_router)
 app.include_router(graph_router)
 app.include_router(ai_router)
+app.include_router(releases_router)
 
 
 @app.middleware("http")

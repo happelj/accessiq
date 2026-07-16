@@ -27,4 +27,16 @@ data:
   GITHUB_API_BASE_URL: {{ .Values.backend.config.connectors.github.apiBaseUrl | quote }}
   ZENDESK_API_BASE_URL: {{ .Values.backend.config.connectors.zendesk.apiBaseUrl | quote }}
   FINANCE_API_BASE_URL: {{ .Values.backend.config.connectors.finance.apiBaseUrl | quote }}
-
+  ACCESSIQ_VERSION: {{ .Values.release.version | quote }}
+  ACCESSIQ_ENVIRONMENT: {{ .Values.release.environment | quote }}
+  ACCESSIQ_GIT_SHA: {{ .Values.release.gitSha | quote }}
+  ACCESSIQ_GIT_TAG: {{ .Values.release.gitTag | quote }}
+  ACCESSIQ_BUILD_TIMESTAMP: {{ .Values.release.buildTimestamp | quote }}
+  ACCESSIQ_DOCKER_IMAGE: {{ default (printf "%s:%s" .Values.backend.image.repository .Values.backend.image.tag) .Values.release.dockerImage | quote }}
+  ACCESSIQ_IMAGE_DIGEST: {{ .Values.release.imageDigest | quote }}
+  ACCESSIQ_HELM_CHART_VERSION: {{ default .Chart.Version .Values.release.helmChartVersion | quote }}
+  ACCESSIQ_HELM_REVISION: {{ default .Release.Revision .Values.release.helmRevision | quote }}
+  ACCESSIQ_TERRAFORM_VERSION: {{ .Values.release.terraformVersion | quote }}
+  ACCESSIQ_DEPLOYMENT_OPERATOR: {{ .Values.release.operator | quote }}
+  ACCESSIQ_DEPLOYMENT_STATUS: {{ .Values.release.status | quote }}
+  ACCESSIQ_DEPLOYED_AT: {{ .Values.release.deployedAt | quote }}

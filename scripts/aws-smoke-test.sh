@@ -11,6 +11,9 @@ echo "Smoke test base URL: ${BASE_URL}"
 curl --fail --silent --show-error "${BASE_URL}/health" >/dev/null
 echo "health endpoint ok"
 
+curl --fail --silent --show-error "${BASE_URL}/version" >/dev/null
+echo "version endpoint ok"
+
 curl --fail --silent --show-error "${BASE_URL}/" >/dev/null
 echo "frontend root ok"
 
@@ -37,8 +40,22 @@ fi
 
 echo "authentication endpoint ok"
 
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "${BASE_URL}/ai/providers" >/dev/null
+authenticated_get() {
+  local path="$1"
+  local label="$2"
 
-echo "AI provider endpoint ok"
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+    "${BASE_URL}${path}" >/dev/null
+
+  echo "${label} endpoint ok"
+}
+
+authenticated_get "/ai/providers" "AI provider"
+authenticated_get "/scim/v2/ServiceProviderConfig" "SCIM service provider config"
+authenticated_get "/graph/cache/status" "authorization graph cache"
+authenticated_get "/connectors" "connectors"
+authenticated_get "/provisioning/jobs" "provisioning jobs"
+authenticated_get "/access-reviews/campaigns" "access reviews"
+authenticated_get "/remediation/jobs" "remediation jobs"
+authenticated_get "/releases/current" "current release"

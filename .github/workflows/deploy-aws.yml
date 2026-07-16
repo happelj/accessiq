@@ -190,8 +190,33 @@ jobs:
           {
             echo "account_id=${account_id}"
             echo "registry=${registry}"
+            echo "backend_repository_name=${backend_repo_name}"
+            echo "frontend_repository_name=${frontend_repo_name}"
             echo "backend_repository=${registry}/${backend_repo_name}"
             echo "frontend_repository=${registry}/${frontend_repo_name}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          git_tag=""
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            git_tag="${GITHUB_REF_NAME}"
+          fi
+          helm_chart_version="$(awk '/^version:/ { print $2; exit }' helm/accessiq/Chart.yaml)"
+          terraform_version="$(awk -F'"' '/required_version/ { print $2; exit }' "infrastructure/terraform/environments/${ACCESSIQ_ENVIRONMENT}/versions.tf")"
+          release_version="${git_tag:-${IMAGE_TAG}}"
+
+          {
+            echo "version=${release_version}"
+            echo "git_sha=${GITHUB_SHA}"
+            echo "git_tag=${git_tag}"
+            echo "build_timestamp=${build_timestamp}"
+            echo "helm_chart_version=${helm_chart_version}"
+            echo "terraform_version=${terraform_version}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Login to Amazon ECR
@@ -200,6 +225,10 @@ jobs:
       - name: Build backend image
         run: |
           docker build --pull \
+            --build-arg "ACCESSIQ_VERSION=${{ steps.release.outputs.version }}" \
+            --build-arg "ACCESSIQ_GIT_SHA=${{ steps.release.outputs.git_sha }}" \
+            --build-arg "ACCESSIQ_GIT_TAG=${{ steps.release.outputs.git_tag }}" \
+            --build-arg "ACCESSIQ_BUILD_TIMESTAMP=${{ steps.release.outputs.build_timestamp }}" \
             --tag "${{ steps.aws.outputs.backend_repository }}:${IMAGE_TAG}" \
             .
 
@@ -207,6 +236,10 @@ jobs:
         run: |
           docker build --pull \
             --build-arg "VITE_API_BASE_URL=${FRONTEND_API_BASE_URL}" \
+            --build-arg "ACCESSIQ_VERSION=${{ steps.release.outputs.version }}" \
+            --build-arg "ACCESSIQ_GIT_SHA=${{ steps.release.outputs.git_sha }}" \
+            --build-arg "ACCESSIQ_GIT_TAG=${{ steps.release.outputs.git_tag }}" \
+            --build-arg "ACCESSIQ_BUILD_TIMESTAMP=${{ steps.release.outputs.build_timestamp }}" \
             --tag "${{ steps.aws.outputs.frontend_repository }}:${IMAGE_TAG}" \
             frontend
 
@@ -215,6 +248,54 @@ jobs:
 
       - name: Push frontend image
         run: docker push "${{ steps.aws.outputs.frontend_repository }}:${IMAGE_TAG}"
+
+      - name: Resolve pushed image digests
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_digest="$(
+            aws ecr describe-images \
+              --repository-name "${{ steps.aws.outputs.backend_repository_name }}" \
+              --image-ids "imageTag=${IMAGE_TAG}" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text
+          )"
+          frontend_digest="$(
+            aws ecr describe-images \
+              --repository-name "${{ steps.aws.outputs.frontend_repository_name }}" \
+              --image-ids "imageTag=${IMAGE_TAG}" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text
+          )"
+
+          {
+            echo "backend_digest=${backend_digest}"
+            echo "frontend_digest=${frontend_digest}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Write Helm release metadata values
+        id: release_values
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_values="${RUNNER_TEMP}/accessiq-release-values.yaml"
+          cat > "${release_values}" <<EOF
+          release:
+            version: "${{ steps.release.outputs.version }}"
+            environment: "${ACCESSIQ_ENVIRONMENT}"
+            gitSha: "${{ steps.release.outputs.git_sha }}"
+            gitTag: "${{ steps.release.outputs.git_tag }}"
+            buildTimestamp: "${{ steps.release.outputs.build_timestamp }}"
+            dockerImage: "${{ steps.aws.outputs.backend_repository }}:${IMAGE_TAG}"
+            imageDigest: "${{ steps.images.outputs.backend_digest }}"
+            helmChartVersion: "${{ steps.release.outputs.helm_chart_version }}"
+            terraformVersion: "${{ steps.release.outputs.terraform_version }}"
+            operator: "${GITHUB_ACTOR}"
+            status: "deployed"
+            deployedAt: "${{ steps.release.outputs.build_timestamp }}"
+          EOF
+          echo "path=${release_values}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure kubectl for EKS
         run: |
@@ -240,6 +321,7 @@ jobs:
             template "${RELEASE_NAME}" helm/accessiq
             --namespace "${NAMESPACE}"
             -f helm/accessiq/values-aws.yaml
+            -f "${{ steps.release_values.outputs.path }}"
             --set "namespace.name=${NAMESPACE}"
             --set-string "backend.image.repository=${{ steps.aws.outputs.backend_repository }}"
             --set-string "backend.image.tag=${IMAGE_TAG}"
@@ -274,6 +356,7 @@ jobs:
             --namespace "${NAMESPACE}"
             --create-namespace
             -f helm/accessiq/values-aws.yaml
+            -f "${{ steps.release_values.outputs.path }}"
             --set "namespace.name=${NAMESPACE}"
             --set-string "backend.image.repository=${{ steps.aws.outputs.backend_repository }}"
             --set-string "backend.image.tag=${IMAGE_TAG}"

@@ -15,6 +15,21 @@ serviceAccount:
   annotations: {}
   automountServiceAccountToken: false
 
+release:
+  version: ""
+  environment: aws
+  gitSha: unknown
+  gitTag: ""
+  buildTimestamp: ""
+  dockerImage: ""
+  imageDigest: ""
+  helmChartVersion: ""
+  helmRevision: ""
+  terraformVersion: ">= 1.10.0, < 2.0.0"
+  operator: github-actions
+  status: deployed
+  deployedAt: ""
+
 backend:
   replicaCount: 2
   image:

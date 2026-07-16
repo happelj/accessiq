@@ -70,6 +70,7 @@ npm run build
 - [Kubernetes and Helm](docs/kubernetes.md)
 - [AWS infrastructure](docs/aws.md)
 - [AWS deployment](docs/deployment-aws.md)
+- [Release engineering](docs/releases.md)
 - [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
@@ -218,6 +219,8 @@ The infrastructure milestone does not automatically deploy AccessIQ to AWS, push
 Every request receives an `X-Correlation-ID`. If the caller supplies the header, AccessIQ preserves it; otherwise the middleware generates one and returns it in the response. The request context also stores request start time, client IP, user agent, and authenticated user metadata after JWT validation.
 
 `GET /health` returns a structured report with top-level status, correlation ID, subsystem status, and lightweight in-memory counters. The current subsystems are database, connectors, audit, provisioning, domain events, and configuration.
+
+`GET /version` returns release metadata including Git SHA, Git tag, build timestamp, Docker image, image digest, Helm chart version, Terraform version, and environment. Authenticated `GET /releases` and `GET /releases/current` expose application-level deployment history for security administrators, IAM administrators, and auditors. See [Release engineering](docs/releases.md) for metadata, versioning, rollback, and smoke-test guidance.
 
 Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes a small in-memory metrics registry for API requests, user creation, audit events, connector execution, retries, review decisions, remediation jobs, and domain event publication. This intentionally avoids a Prometheus dependency while keeping a clear upgrade path.
 

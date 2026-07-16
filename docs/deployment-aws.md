@@ -4,6 +4,8 @@ Milestone 15B adds a reproducible AWS deployment path for AccessIQ. It builds ba
 
 This deployment path is additive. Local Docker Compose, local Kubernetes, and the existing CI workflow remain unchanged.
 
+Milestone 15C adds release engineering metadata to the same workflow. Deployments now capture Git SHA, Git tag, build timestamp, image digest, Helm chart version, Terraform version constraint, environment, operator, and deployment status. See [Release engineering](releases.md) for the API and lifecycle details.
+
 ## Architecture
 
 ```text
@@ -13,8 +15,10 @@ GitHub workflow_dispatch
   -> Backend and frontend tests
   -> Docker build
   -> Amazon ECR push
+  -> ECR digest lookup
   -> aws eks update-kubeconfig
   -> Helm upgrade/install to EKS
+  -> release metadata in backend configuration
   -> Kubernetes rollout checks
   -> HTTP smoke tests
 ```
@@ -129,6 +133,8 @@ Images are tagged with an immutable tag:
 
 Do not rely on `latest` for AWS deployment.
 
+The workflow also looks up the pushed ECR image digest and stores the backend image reference and digest in release metadata.
+
 ## Helm Values
 
 AWS-specific values live in:
@@ -145,8 +151,9 @@ The file configures:
 - AWS Load Balancer Controller ingress class and annotations
 - production replicas, resources, HPAs, PDBs, and NetworkPolicies
 - AI and connector configuration placeholders
+- release metadata defaults
 
-The workflow overrides image repositories, image tag, namespace, ingress host, frontend API base URL, and backend Secret name at deploy time.
+The workflow overrides image repositories, image tag, namespace, ingress host, frontend API base URL, backend Secret name, and release metadata at deploy time.
 
 ## Secrets
 
@@ -217,6 +224,13 @@ helm upgrade --install accessiq helm/accessiq \
   --set-string frontend.apiBaseUrl=https://<dns-name> \
   --set-string backend.config.corsAllowedOrigins=https://<dns-name> \
   --set-string backend.secrets.existingSecret=accessiq-backend-runtime \
+  --set-string release.version=<git-sha-or-tag> \
+  --set-string release.environment=dev \
+  --set-string release.gitSha=<git-sha> \
+  --set-string release.buildTimestamp=<utc-build-time> \
+  --set-string release.dockerImage=<backend-image> \
+  --set-string release.imageDigest=<backend-image-digest> \
+  --set-string release.operator=<operator> \
   --wait \
   --timeout 10m
 ```
@@ -244,10 +258,18 @@ scripts/aws-smoke-test.sh
 It verifies:
 
 - `/health`
+- `/version`
 - frontend root `/`
 - `/openapi.json`
 - `POST /login`
 - authenticated `GET /ai/providers`
+- authenticated `GET /scim/v2/ServiceProviderConfig`
+- authenticated `GET /graph/cache/status`
+- authenticated `GET /connectors`
+- authenticated `GET /provisioning/jobs`
+- authenticated `GET /access-reviews/campaigns`
+- authenticated `GET /remediation/jobs`
+- authenticated `GET /releases/current`
 
 Run it manually:
 
@@ -270,6 +292,12 @@ View release history:
 helm history accessiq --namespace accessiq
 ```
 
+Check current status:
+
+```bash
+helm status accessiq --namespace accessiq
+```
+
 Roll back to the previous release:
 
 ```bash
@@ -283,6 +311,8 @@ helm rollback accessiq <revision> --namespace accessiq
 ```
 
 Because image tags are immutable, rollback restores the image tag recorded in the Helm revision.
+
+After rollback, check `/version` and `/releases/current` to confirm the runtime metadata matches the deployed revision.
 
 ## Troubleshooting
 

@@ -19,3 +19,14 @@ frontend/node_modules
 frontend/dist
 frontend/coverage
 frontend/.vite-cache
+frontend/reports
+reports
+dist
+build
+.terraform
+.terraform.d
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
