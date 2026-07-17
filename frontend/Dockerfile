@@ -14,6 +14,10 @@ RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 ARG ACCESSIQ_VERSION=0.1.0
 ARG ACCESSIQ_GIT_SHA=unknown
 ARG ACCESSIQ_GIT_TAG=

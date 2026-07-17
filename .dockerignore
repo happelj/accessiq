@@ -21,10 +21,17 @@ frontend/coverage
 frontend/.vite-cache
 frontend/reports
 reports
+sbom
 dist
 build
 .terraform
+.terraform/
+**/.terraform
+**/.terraform/**
 .terraform.d
+.terraform.d/
+**/.terraform.d
+**/.terraform.d/**
 *.tfstate
 *.tfstate.*
 *.tfplan

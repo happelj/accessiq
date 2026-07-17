@@ -1,0 +1,29 @@
+title = "AccessIQ Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Development-only placeholders and documented seed credentials"
+regexes = [
+  '''Password123!''',
+  '''accessiq-dev-password''',
+  '''change-me-minimum-32-bytes-placeholder''',
+  '''ci-accessiq-secret-minimum-32-bytes''',
+  '''dev-accessiq-change-me-minimum-32-bytes''',
+]
+paths = [
+  '''\.env\.example''',
+  '''\.mypy_cache/.*''',
+  '''\.pytest_cache/.*''',
+  '''\.ruff_cache/.*''',
+  '''docker-compose\.yml''',
+  '''docs/.*''',
+  '''frontend/dist/.*''',
+  '''frontend/node_modules/.*''',
+  '''helm/accessiq/values.*\.yaml''',
+  '''README\.md''',
+  '''reports/.*''',
+  '''sbom/.*''',
+  '''tests/.*''',
+]
