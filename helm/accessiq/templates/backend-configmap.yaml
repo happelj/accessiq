@@ -7,6 +7,11 @@ metadata:
     {{- include "accessiq.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 data:
+  DATABASE_POOL_PRE_PING: {{ .Values.backend.config.databasePoolPrePing | quote }}
+  DATABASE_POOL_SIZE: {{ .Values.backend.config.databasePoolSize | quote }}
+  DATABASE_MAX_OVERFLOW: {{ .Values.backend.config.databaseMaxOverflow | quote }}
+  DATABASE_POOL_TIMEOUT: {{ .Values.backend.config.databasePoolTimeout | quote }}
+  DATABASE_POOL_RECYCLE_SECONDS: {{ .Values.backend.config.databasePoolRecycleSeconds | quote }}
   JWT_ALGORITHM: {{ .Values.backend.config.jwtAlgorithm | quote }}
   ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.backend.config.accessTokenExpireMinutes | quote }}
   AI_ENABLED: {{ .Values.backend.config.aiEnabled | quote }}
