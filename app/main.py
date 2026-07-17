@@ -87,6 +87,26 @@ from .request_context import (
 )
 
 SEED_USER_PASSWORD = "Password123!"
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https://fastapi.tiangolo.com; "
+        "font-src 'self' data: https://cdn.jsdelivr.net; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    ),
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 SEEDED_USERS = [
     {
         "name": "Bob Smith",
@@ -468,6 +488,11 @@ def record_current_deployment() -> None:
         db.commit()
 
 
+def apply_security_headers(response) -> None:
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_database()
@@ -608,6 +633,7 @@ async def request_context_middleware(request: Request, call_next):
 
             duration_seconds = perf_counter() - started_at
             response.headers[CORRELATION_ID_HEADER] = context.correlation_id
+            apply_security_headers(response)
             if response.status_code >= 400:
                 metrics_registry.increment("http_request_errors_total")
             record_http_request(

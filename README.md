@@ -73,6 +73,8 @@ npm run build
 - [Release engineering](docs/releases.md)
 - [Observability](docs/observability.md)
 - [Performance validation](docs/performance.md)
+- [Security and production readiness](docs/security.md)
+- [Threat model](docs/threat-model.md)
 - [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
@@ -147,7 +149,7 @@ Initial pages include dashboard, users, applications, groups, access assignments
 
 ## CI/CD
 
-AccessIQ uses GitHub Actions for pull request and `main` branch validation. The workflow runs backend linting, Python formatting checks, MyPy, the full backend test suite, frontend ESLint, Prettier checks, TypeScript validation, Vitest, frontend production build, Docker build validation, Kubernetes and Helm validation, and dependency security scans.
+AccessIQ uses GitHub Actions for pull request and `main` branch validation. The workflow runs backend linting, Python formatting checks, MyPy, the full backend test suite, frontend ESLint, Prettier checks, TypeScript validation, Vitest, frontend production build, Docker build validation, Kubernetes and Helm validation, dependency security scans, secret scanning, container scanning, dependency review, and SBOM generation.
 
 Run the same core checks locally:
 
@@ -174,9 +176,12 @@ Docker build validation:
 ```bash
 docker build -t accessiq-api:ci .
 docker build -t accessiq-frontend:ci frontend
+bash scripts/container-scan.sh accessiq-api:ci accessiq-frontend:ci
+bash scripts/secret-scan.sh
+bash scripts/generate-sbom.sh
 ```
 
-The CI workflow does not require GitHub secrets and does not deploy or publish images. See [CI/CD quality gates](docs/ci-cd.md) for branch protection recommendations and troubleshooting.
+The CI workflow does not require GitHub secrets and does not deploy or publish images. See [CI/CD quality gates](docs/ci-cd.md) for branch protection recommendations and troubleshooting, and [Security and production readiness](docs/security.md) for hardening and supply-chain validation.
 
 ## Kubernetes And Helm
 

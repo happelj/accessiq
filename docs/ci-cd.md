@@ -1,18 +1,21 @@
 # CI/CD Quality Gates
 
-Milestone 13B adds continuous integration for AccessIQ. The pipeline validates backend quality, frontend quality, test suites, dependency security, and Docker image builds on every pull request and every push to `main`.
+AccessIQ continuous integration validates backend quality, frontend quality, test suites, dependency security, software supply chain controls, and Docker image builds on every pull request and every push to `main`.
 
 This milestone does not deploy infrastructure, publish container images, or require cloud credentials.
 
 ## Workflow Architecture
 
-The workflow lives at `.github/workflows/ci.yml` and runs four jobs:
+The workflow lives at `.github/workflows/ci.yml` and runs five jobs:
 
 1. `backend-quality`: Python dependency install, Ruff linting, Black format check, MyPy type checking, and the full backend pytest suite against PostgreSQL.
 2. `frontend-quality`: Node dependency install, ESLint, Prettier format check, TypeScript validation, Vitest, and Vite production build.
 3. `docker-build`: backend Docker image build and frontend Docker image build. Images are local to the CI runner and are not pushed.
 4. `kubernetes-quality`: Helm linting, dev/prod manifest rendering, and kubectl client-side dry-run validation against a disposable kind cluster.
-5. `dependency-security`: Python dependency audit through `pip-audit` and JavaScript dependency audit through `npm audit`.
+5. `dependency-security`: Python dependency audit through `pip-audit`, JavaScript dependency audit through `npm audit`, GitHub dependency review for pull requests, Gitleaks secret scanning, and CycloneDX SBOM generation.
+
+The Docker build job also runs Trivy against the backend and frontend images and
+uploads image scan reports plus image SBOMs.
 
 The workflow triggers on:
 
@@ -37,8 +40,11 @@ Checkout
   -> Frontend tests
   -> Frontend production build
   -> Docker build validation
+  -> Container vulnerability scan
   -> Kubernetes manifest validation
   -> Dependency security scan
+  -> Secret scan
+  -> SBOM generation
   -> Success
 ```
 
@@ -55,6 +61,8 @@ black --check app tests
 mypy
 pytest -vv
 bash scripts/python-dependency-audit.sh
+bash scripts/secret-scan.sh
+bash scripts/generate-sbom.sh
 ```
 
 Frontend quality:
@@ -75,6 +83,7 @@ Docker validation:
 ```bash
 docker build -t accessiq-api:ci .
 docker build -t accessiq-frontend:ci frontend
+bash scripts/container-scan.sh accessiq-api:ci accessiq-frontend:ci
 ```
 
 Kubernetes validation:
@@ -105,6 +114,18 @@ Frontend tools are configured under `frontend/`:
 
 `scripts/python-dependency-audit.sh` runs `pip-audit` in strict mode with bounded retries for transient PyPI connectivity failures. Known Python dependency vulnerabilities still fail the workflow. `npm audit --audit-level=moderate` fails the workflow for moderate, high, or critical JavaScript dependency findings.
 
+`scripts/secret-scan.sh` runs Gitleaks against the checked-out source tree and
+fails on committed secrets that are not explicitly allow-listed as development
+placeholders.
+
+`scripts/container-scan.sh` runs Trivy against the backend and frontend images.
+The default policy fails on fixed high and critical vulnerabilities and writes
+reports under `reports/security`.
+
+`scripts/generate-sbom.sh` generates CycloneDX SBOMs for Python and Node
+dependencies. Trivy generates CycloneDX SBOMs for container images during the
+container scan.
+
 When a scan fails:
 
 1. Read the advisory and affected package.
@@ -114,7 +135,10 @@ When a scan fails:
 
 ## Artifacts
 
-The backend job uploads the pytest JUnit report as `backend-pytest-report`. The workflow does not upload frontend build output or Docker layers because this milestone validates quality only and does not publish release artifacts.
+The backend job uploads the pytest JUnit report as `backend-pytest-report`. The
+security jobs upload container scan reports and generated SBOMs. The workflow
+does not upload frontend build output or Docker layers because CI validates
+quality only and does not publish release artifacts.
 
 ## Branch Protection Recommendations
 
@@ -122,7 +146,7 @@ For `main`, enable branch protection with:
 
 - Require pull request before merging
 - Require status checks to pass before merging
-- Require the CI workflow jobs: backend quality, frontend quality, Docker build validation, Kubernetes and Helm validation, and dependency security
+- Require the CI workflow jobs: backend quality, frontend quality, Docker build validation, Kubernetes and Helm validation, dependency security, container scanning, secret scanning, and SBOM generation
 - Require branches to be up to date before merging
 - Restrict force pushes
 
