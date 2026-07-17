@@ -111,6 +111,11 @@ backend:
     timeoutSeconds: 5
     failureThreshold: 3
   config:
+    databasePoolPrePing: "true"
+    databasePoolSize: "5"
+    databaseMaxOverflow: "10"
+    databasePoolTimeout: "30"
+    databasePoolRecycleSeconds: "1800"
     jwtAlgorithm: HS256
     accessTokenExpireMinutes: "30"
     aiEnabled: "true"

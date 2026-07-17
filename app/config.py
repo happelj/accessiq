@@ -47,6 +47,11 @@ class ConnectorSettings:
 class DatabaseSettings:
     database_url: str
     database_backend: str
+    pool_pre_ping: bool
+    pool_size: int
+    max_overflow: int
+    pool_timeout: int
+    pool_recycle_seconds: int
 
 
 @dataclass(frozen=True)
@@ -104,6 +109,11 @@ def get_database_settings() -> DatabaseSettings:
     return DatabaseSettings(
         database_url=database_url,
         database_backend=_database_backend(database_url),
+        pool_pre_ping=_get_bool_env("DATABASE_POOL_PRE_PING", True),
+        pool_size=_get_int_env("DATABASE_POOL_SIZE", 5),
+        max_overflow=_get_int_env("DATABASE_MAX_OVERFLOW", 10),
+        pool_timeout=_get_int_env("DATABASE_POOL_TIMEOUT", 30),
+        pool_recycle_seconds=_get_int_env("DATABASE_POOL_RECYCLE_SECONDS", 1800),
     )
 
 

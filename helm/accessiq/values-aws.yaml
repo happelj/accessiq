@@ -37,6 +37,11 @@ backend:
     tag: REPLACE_WITH_IMMUTABLE_IMAGE_TAG
     pullPolicy: IfNotPresent
   config:
+    databasePoolPrePing: "true"
+    databasePoolSize: "5"
+    databaseMaxOverflow: "10"
+    databasePoolTimeout: "30"
+    databasePoolRecycleSeconds: "1800"
     aiEnabled: "true"
     llmProvider: mock
     aiTimeout: "30"

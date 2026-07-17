@@ -72,6 +72,7 @@ npm run build
 - [AWS deployment](docs/deployment-aws.md)
 - [Release engineering](docs/releases.md)
 - [Observability](docs/observability.md)
+- [Performance validation](docs/performance.md)
 - [Terraform workflow](docs/terraform.md)
 - [SCIM implementation](docs/scim.md)
 - [Connector framework](docs/connectors.md)
@@ -107,6 +108,11 @@ JWT access tokens are signed locally and include standard `sub`, `iat`, and `exp
 Set these environment variables as needed:
 
 - `DATABASE_URL`: SQLAlchemy database URL. Default: `sqlite:///./accessiq.db`.
+- `DATABASE_POOL_PRE_PING`: validates pooled database connections before reuse. Default: `true`.
+- `DATABASE_POOL_SIZE`: persistent SQLAlchemy connections per backend process for non-SQLite databases. Default: `5`.
+- `DATABASE_MAX_OVERFLOW`: temporary overflow database connections per backend process for non-SQLite databases. Default: `10`.
+- `DATABASE_POOL_TIMEOUT`: seconds to wait for a pooled database connection. Default: `30`.
+- `DATABASE_POOL_RECYCLE_SECONDS`: maximum age for pooled database connections before recycling. Default: `1800`.
 - `JWT_SECRET`: signing secret for access tokens. Default is development-only.
 - `JWT_ALGORITHM`: JWT signing algorithm. Default: `HS256`.
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime in minutes. Default: `30`.
@@ -230,6 +236,8 @@ Every request receives an `X-Correlation-ID`. If the caller supplies the header,
 Operational events use stdlib logging with JSON payloads through `app/observability.py`. The same module exposes provider-backed Prometheus metrics at `GET /metrics`, including HTTP request counts and latency, authentication, RBAC denials, policy denials, connector execution, provisioning, review campaigns, remediation, AI provider calls, SCIM requests, database health checks, and release metadata.
 
 OpenTelemetry tracing instruments FastAPI, SQLAlchemy, httpx, connector calls, and AI provider generation when tracing is enabled. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send spans to an OpenTelemetry Collector. Kubernetes deployments can enable Prometheus scrape annotations through Helm values. See [Observability](docs/observability.md) for metrics, logs, tracing, dashboard, alert, Kubernetes, and AWS guidance.
+
+Performance validation lives under `performance/k6`. The suite covers authentication, users, applications, SCIM, authorization graph, AI explanations, access reviews, provisioning, health, and metrics with deterministic non-destructive scenarios. See [Performance validation](docs/performance.md) for k6 commands, baseline methodology, database pooling guidance, Kubernetes scaling checks, and AWS sizing recommendations.
 
 ## Authorization Graph
 

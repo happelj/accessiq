@@ -9,6 +9,11 @@ backend:
     tag: "0.1.0"
     pullPolicy: IfNotPresent
   config:
+    databasePoolPrePing: "true"
+    databasePoolSize: "5"
+    databaseMaxOverflow: "10"
+    databasePoolTimeout: "30"
+    databasePoolRecycleSeconds: "1800"
     corsAllowedOrigins: https://accessiq.example.com
     accessiqLogLevel: INFO
     accessiqMetricsEnabled: "true"
